@@ -32,7 +32,8 @@ R08: 00000000 R09: 00000000 R10: 00000000 R11: 00000000
 R12: 00000000 R13: 03007F00 R14: 00000000 R15: 08000004
 CPSR: [-ZC--] 6000001F
 ```
-**You can use variable expressions in place of any numerical arguments**.  If the command takes multiple arguments, then each expression must not contain spaces.
+**You can use variable expressions in place of any numerical arguments**.  
+If the command takes multiple arguments, then each expression must not contain spaces.
 ```
 > chardata = $02000520
 > m chardata+$14C*4 10
@@ -40,11 +41,11 @@ CPSR: [-ZC--] 6000001F
 02000A60:  00220046 3ACF4000 000C0020 0102001A   F."..@.: .......
 02000A70:  00000000 0077006D                     ....m.w.
 ```
-Expressions may be typed directly into to the console to print their value.\  
+Expressions may be typed directly into to the console to print their value.    
 Hexadecimal numbers must be preceded by "0x", "$", or "x".
 
 ## Output
-The output file is "output.txt"
+The output file is "output.txt"  
 Output is off by default.  By using the command `output true`, the registers and other data will be written to output.txt after each executed CPU instruction.  You can pick a format preset using the `format` command.
 ```
 > output true
@@ -65,6 +66,6 @@ There are four types of breakpoints you can set:
 - b \[*addr*\] \- break on execute
 - bw \[*addr*\] \- break on write
 - br \[*addr*\] \- break on read
-- bc \[*expression*\] \- break when [expression](#expressions) is Truthy
+- bc \[*expression*\] \- break when [*expression*](#expressions) is Truthy
 
-Each of these sends control back to the user after it finishes executing the current CPU instruction, and printing a breakpoint message.  `b all` may be used to view all breakpoints.  These may be deleted using the corresponding d, dw, dr, dc.  `d all` clears all of them.
+Each of these sends control back to the user after it finishes executing the current CPU instruction, and printing a breakpoint message.  `b all` may be used to view all breakpoints.  These may be deleted using the corresponding d, dw, dr, and dc.  `d all` deletes all of them.
