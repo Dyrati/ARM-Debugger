@@ -11,7 +11,7 @@ OUTPUTFILE = "output.txt"
 OutputHandle = None
 OutputState = False
 FileLimit = 10*2**20
-Format = "block"
+Format = "line"
 UserVars = {}
 LocalSaves = {}
 
@@ -94,17 +94,16 @@ helptext = """
     dist [addr] (count)             display *count* instructions starting from addr in THUMB
     disa [addr] (count)             display *count* instructions starting from addr in ARM
     m [addr] (count) (size)         display the memory at addr (count=1, size=4 by default)
-    setm [addr] [value] (size)      modify *size* bytes at addr; size=4 by default
-    setr [register] [value]         modify a register; set regnum to 16 to modify CPSR; accepts r0-r16 and sp/lr/pc
 
-    [identifier] = [expression]     create a user variable
+    [identifier][op][expression]    create/modify a User Variable; "op" may be =, +=, -=, *=, etc
+                                        if identifier is r0-r16 or sp/lr/pc, changes a register value
+                                        if identifier is m(addr,size), changes a value in memory
     dv [identifier]                 delete user variable
     vars                            print all user variables
     save (identifier)               create a local save; identifier = PRIORSTATE by default
     load (identifier)               load a local save; identifier = PRIORSTATE by default
     ds [identifier]                 delete local save
     saves                           print all local save identifiers
-    eval [expression]               print the value of *expression*
 
     importrom [filepath]            import a rom into the debugger
     importstate [filepath]          import a savestate
@@ -150,9 +149,7 @@ def expstr(string):
     return string
 
 
-def expeval(args):
-    try: return eval(expstr("".join(args)))
-    except TypeError: return eval(expstr(str(args)))
+def expeval(args): return eval(expstr(str(args)))
 
 
 def hexdump(addr,count=1,size=4):
@@ -214,17 +211,72 @@ def writefile(preset):
     OutputHandle.write(outstring + "\n")
 
 
-def ass0(ID,exp): UserVars[ID] = expeval(exp)
-def ass1(ID,exp): UserVars[ID] += expeval(exp)
-def ass2(ID,exp): UserVars[ID] -= expeval(exp)
-def ass3(ID,exp): UserVars[ID] *= expeval(exp)
-def ass4(ID,exp): UserVars[ID] /= expeval(exp)
-def ass5(ID,exp): UserVars[ID] //= expeval(exp)
-def ass6(ID,exp): UserVars[ID] <<= expeval(exp)
-def ass7(ID,exp): UserVars[ID] >>= expeval(exp)
-def ass8(ID,exp): UserVars[ID] %= expeval(exp)
-def ass9(ID,exp): UserVars[ID] != expeval(exp)
-assignment = {"": ass0, "+": ass1, "-": ass2, "*": ass3, "/": ass4, "//": ass5, "<<": ass6, ">>": ass7, "%": ass8, "!": ass9}
+def com_n(count=1): 
+    global Show,Pause,PauseCount
+    Show,Pause,PauseCount = True, False, expeval(count)
+def com_c(count=0):
+    global Show,Pause,PauseCount
+    Show,Pause,PauseCount = False, False, expeval(count)
+def com_b(*args):
+    if args[0] == "all":
+        print("BreakPoints: ", [f"{i:0>8X}" for i in sorted(BreakPoints)])
+        print("WatchPoints: ", [f"{i:0>8X}" for i in sorted(WatchPoints)])
+        print("ReadPoints:  ", [f"{i:0>8X}" for i in sorted(ReadPoints)])
+        print("Conditionals:", Conditionals)
+    else: BreakPoints.add(expeval("".join(args)))
+def com_bw(*args): WatchPoints.add(expeval("".join(args)))
+def com_br(*args): ReadPoints.add(expeval("".join(args)))
+def com_bc(*args): Conditionals.append(expstr("".join(args)))
+def com_d(*args):
+    if args[0] == "all": reset_breakpoints()
+    else: BreakPoints.remove(expeval("".join(args)))
+def com_dw(*args): WatchPoints.remove(expeval("".join(args)))
+def com_dr(*args): ReadPoints.remove(expeval("".join(args)))
+def com_dc(*args): Conditionals.pop(expeval("".join(args)))
+def com_i(): showreg()
+def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
+def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
+def com_m(addr,count=1,size=4): hexdump(expeval(addr),expeval(count),expeval(size))
+def com_setm(addr,data,size=4): mem_write(expeval(addr), expeval(data), expeval(size))
+def com_setr(regnum,value):
+    regnum = re.sub(r"^r(\d+)$", r"\1", regnum)
+    reps = {"sp":"13","lr":"14","pc":"15"}
+    if regnum in reps: regnum = reps[regnum]
+    Reg[expeval(regnum)] = expeval(value)
+def com_dv(identifier): del UserVars[identifier]
+def com_vars(): print(UserVars)
+def com_save(identifier="PRIORSTATE"):
+    LocalSaves[identifier] = [], Reg.copy()
+    for i in range(8): LocalSaves[identifier][0].append(Memory[i].copy())
+def com_load(identifier="PRIORSTATE"):
+    for i in range(8): Memory[i] = LocalSaves[identifier][0][i].copy()
+    Reg[:] = LocalSaves[identifier][1].copy()
+def com_ds(identifier): del LocalSaves[identifier]
+def com_saves(): print(list(LocalSaves))
+def com_importrom(*args): importrom(" ".join(args).strip('"'))
+def com_importstate(*args): importstate(" ".join(args).strip('"'))
+def com_output(arg):
+    global OutputHandle, OutputState
+    arg = arg.lower()
+    if arg == "true": 
+        if not OutputHandle: OutputHandle = open(OUTPUTFILE,"w+")
+        else: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
+        OutputState = True
+    elif arg == "false": OutputHandle.close(); OutputState = False
+    elif arg == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
+def com_format(arg): global Format; Format = arg
+def com_cls(): os.system("cls")
+def com_help(): print(helptext[1:-1])
+def com_quit(): quit()
+def com_e(): global lastcommand,ExecMode; lastcommand = ""; ExecMode = True
+
+commands = {
+    "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, 
+    "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "setm":com_setm, "setr":com_setr, "dv":com_dv, "vars":com_vars, 
+    "save":com_save, "load":com_load, "ds":com_ds, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, 
+    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit, 
+    "e":com_e}
+assignments = {"","+","-","*","//","/","&","^","%","<<",">>","**"}
 
 
 Show = True
@@ -252,80 +304,31 @@ while True:
                 name,*args = command.split(" ")
                 if name == "": name,*args = lastcommand.split(" ")
                 else: lastcommand = command
-                if len(command.split("=")) == 2:
-                    identifier,op,expression = re.match("(\w+)\s*(\W*)=(.+)",command).groups()
-                    assignment[op](identifier,expression)
-                elif name == "n": 
-                    Show,Pause = True,False
-                    try: PauseCount = expeval(args[0])
-                    except IndexError: PauseCount = 1
-                elif name == "c": 
-                    Show,Pause = False,False
-                    try: PauseCount = expeval(args[0])
-                    except IndexError: PauseCount = 0
-                elif name == "b":
-                    if args[0] == "all":
-                        print("BreakPoints: ", [f"{i:0>8X}" for i in sorted(BreakPoints)])
-                        print("WatchPoints: ", [f"{i:0>8X}" for i in sorted(WatchPoints)])
-                        print("ReadPoints:  ", [f"{i:0>8X}" for i in sorted(ReadPoints)])
-                        print("Conditionals:", Conditionals)
-                    else: BreakPoints.add(expeval(args))
-                elif name == "bw": WatchPoints.add(expeval(args))
-                elif name == "br": ReadPoints.add(expeval(args))
-                elif name == "bc": Conditionals.append(expstr("".join(args)))
-                elif name == "d":
-                    if args[0] == "all": reset_breakpoints()
-                    else: BreakPoints.remove(expeval(args))
-                elif name == "dw": WatchPoints.remove(expeval(args))
-                elif name == "dr": ReadPoints.remove(expeval(args))
-                elif name == "dc": Conditionals.pop(expeval(args))
-                elif name == "i": showreg()
-                elif name == "dist":
-                    try: disT(expeval(args[0]), expeval(args[1]))
-                    except IndexError: disT(expeval(args[0]))
-                elif name == "disa":
-                    try: disA(expeval(args[0]), expeval(args[1]))
-                    except IndexError: disA(expeval(args[0]))
-                elif name == "m": hexdump(expeval(args[0]),*(expeval(i) for i in args[1:]))
-                elif name == "setm":
-                    size = expeval(args[2]) if len(args) == 3 else 4
-                    mem_write(expeval(args[0]), expeval(args[1]), size)
-                elif name == "setr":
-                    args[0] = re.sub(r"^r(\d+)$", r"\1", args[0])
-                    reps = {"sp":"13","lr":"14","pc":"15"}
-                    if args[0] in reps: args[0] = reps[args[0]]
-                    Reg[expeval(args[0])] = expeval(args[1])
-                elif name == "dv": del UserVars[args[0]]
-                elif name == "vars": print(UserVars)
-                elif name == "save": 
-                    try: identifier = args[0]
-                    except IndexError: identifier = "PRIORSTATE"
-                    LocalSaves[identifier] = [], Reg.copy()
-                    for i in range(8): LocalSaves[identifier][0].append(Memory[i].copy())
-                elif name == "load":
-                    try: identifier = args[0]
-                    except IndexError: identifier = "PRIORSTATE"
-                    for i in range(8): Memory[i] = LocalSaves[identifier][0][i].copy()
-                    Reg = LocalSaves[identifier][1].copy()
-                    ARMCPU.Reg = Reg
-                elif name == "ds": del LocalSaves[args[0]]
-                elif name == "saves": print(list(LocalSaves))
-                elif name == "eval": print(expeval(args))
-                elif name == "importrom": importrom(" ".join(args).strip('"'))
-                elif name == "importstate": importstate(" ".join(args).strip('"'))
-                elif name == "output":
-                    arg0 = args[0].lower()
-                    if arg0 == "true": 
-                        if not OutputHandle: OutputHandle = open(OUTPUTFILE,"w+")
-                        OutputState = True
-                    elif arg0 == "false": OutputState = False
-                    elif arg0 == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
-                elif name == "format": Format = args[0]
-                elif name == "cls": os.system("cls")
-                elif name in {"help","?"}: print(helptext[1:-1])
-                elif name in {"quit","exit"}: quit()
-                elif name == "e": lastcommand = ""; ExecMode = True
-                else: print("Unrecognized command")
+
+                # Assignment operators
+                op = re.search(r"([^ a-zA-Z0-9]*)=",command)
+                if op and op.group(1) in assignments:
+                    identifier,expression = command.replace(" ","").split(op.group(0))
+                    op = op.group(0)
+                    expression = expeval(expression)
+                    matchr = re.match(r"r(\d+)$",identifier)
+                    matchm = re.match(r"m\(([^,]+),?(.+)?\)",identifier)
+                    if matchr: exec(f"Reg[{int(matchr.group(1))}]{op}{expression}")
+                    elif matchm:
+                        arg0,arg1 = expeval(matchm.group(1)), expeval(matchm.group(2))
+                        if arg1 == None: arg1 = 4
+                        newvalue = mem_read(arg0,arg1)
+                        exec(f"newvalue{op}{expression}")
+                        mem_write(arg0, newvalue, arg1)
+                    else: exec(f"UserVars[identifier]{op}{expression}")
+
+                # Command execution
+                else: 
+                    try: com = commands[name]
+                    except KeyError: 
+                        try: print(expeval(command))
+                        except NameError: print("Unrecognized command")
+                    else: com(*args)
         except Exception:
             print(traceback.format_exc(),end="")
     else:
@@ -361,9 +364,9 @@ while True:
     if OutputState:
         writefile(Format)
         if OutputHandle.tell() > FileLimit:
-            print("=======================================")
-            print(f"Warning, output file has exceeded {FileLimit//2**20} MB")
-            print("=======================================")
-            s = input("Proceed? y/n\n")
-            if s == "y": FileLimit *= 10
-            else: OutputState = False; Pause = True
+            order = max(0,(int.bit_length(FileLimit)-1)//10)
+            message = f"Warning: output file has exceeded {FileLimit//2**(10*order)} {('','K','M','G')[order]}B"
+            print(f"{'~'*len(message)}\n{message}\n{'~'*len(message)}")
+            s = input("Proceed? y/n: ")
+            if s.lower() in {"y","yes"}: FileLimit *= 4
+            else: Pause = True
