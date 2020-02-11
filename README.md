@@ -6,6 +6,9 @@ Make sure you have Python installed, and download the repository.  You can then 
 From there, you can type in help or ? to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
+## Imports and Savestates
+To execute instructions, you'll need to import a rom.  Use `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
+
 ## Variables
 You can store variables by typing in [identifier] = [expression]
 ```
@@ -37,8 +40,7 @@ You can use variable expressions as arguments.  If the command takes multiple ar
 02000A60:  00220046 3ACF4000 000C0020 0102001A   F."..@.: .......
 02000A70:  00000000 0077006D                     ....m.w.
 ```
-Hexadecimal numbers must be preceded by "0x", "$", or "x"
-Expressions may be typed directly into to the console to print their value.
+Expressions may be typed directly into to the console to print their value.  Hexadecimal numbers must be preceded by "0x", "$", or "x".
 
 ## Output
 The output file is "output.txt"
