@@ -2,7 +2,7 @@
 An easy to use, powerful debugger.  Import a rom, and an sgm file, and set breakpoints, watchpoints, and readpoints, view/modify registers and memory, output results to a txt file, and disassemble the code.
 
 ## Set Up
-Make sure you have Python installed, and download the Debugger folder.  You can then open "Debugger.py", and that's it!
+Make sure you have Python installed, and download the repository.  You can then unpack it and open "Debugger.py", and that's it!
 From there, you can type in help or ? to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
