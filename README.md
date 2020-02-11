@@ -11,9 +11,25 @@ You can store variables by typing in [identifier] = [expression]
 ```
 > test = 12345
 ```
-Then you can use those variables in place of any arguments.  Default variables are r0-r16, which refer to the registers (r16 is the psr), sp/lr/pc (r13-r15), and m(addr,size), which reads *size* bytes at *addr* (size=4 by default).
+Then you can use those variables in place of any arguments.  You can also modify variables with compound assignment operators. (+=, -=, \*=, etc).  "expression" may include any combination of variables and mathematical operations.
 
-You can also use mathematical expressions including user variables as arguments.  If the command takes multiple arguments, then each mathematical expression must not contain spaces.
+Default variables are r0-r16, which refer to the registers (r16 is PSR).  sp/lr/pc are r13/r14/r15, and m(addr,size) is *size* bytes of data at *addr* (size=4 by default).  These may be modified just like any other variable:
+```
+> i
+R00: 08000000 R01: 000000EA R02: 00000000 R03: 00000000
+R04: 00000000 R05: 00000000 R06: 00000000 R07: 00000000
+R08: 00000000 R09: 00000000 R10: 00000000 R11: 00000000
+R12: 00000000 R13: 03007F00 R14: 00000000 R15: 08000004
+CPSR: [-ZC--] 6000001F
+> r0 = sp+12
+> i
+R00: 03007F0C R01: 000000EA R02: 00000000 R03: 00000000
+R04: 00000000 R05: 00000000 R06: 00000000 R07: 00000000
+R08: 00000000 R09: 00000000 R10: 00000000 R11: 00000000
+R12: 00000000 R13: 03007F00 R14: 00000000 R15: 08000004
+CPSR: [-ZC--] 6000001F
+```
+You can use variable expressions as arguments.  If the command takes multiple arguments, then each expression must not contain spaces.
 ```
 > chardata = $02000520
 > m chardata+$14C*4 10
@@ -22,7 +38,8 @@ You can also use mathematical expressions including user variables as arguments.
 02000A70:  00000000 0077006D                     ....m.w.
 ```
 Hexadecimal numbers must be preceded by "0x", "$", or "x"
+Expressions may be typed directly into to the console to print their value.
 
 ## Output
 The output file is "output.txt"
-Output is off by default.  By using the command `output true`, the registers and other data will be written to the file after each executed instruction.  You can pick a format using the `format` command.
+Output is off by default.  By using the command `output true`, the registers and other data will be written to the file after each executed instruction.  You can pick a format preset using the `format` command.
