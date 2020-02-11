@@ -6,8 +6,8 @@ Make sure you have Python installed, and download the repository.  You can then 
 From there, you can type in help or ? to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
-## Imports and Savestates
-To execute instructions, you'll need to import a rom.  Use `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
+#### Imports and Savestates
+To execute instructions, you'll need to import a rom.  You can use the command `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
 
 ## Variables
 You can store variables by typing in [identifier] = [expression]
