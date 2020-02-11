@@ -9,7 +9,7 @@ You can also start Debugger.py from the command line with two optional arguments
 #### Imports and Savestates
 To execute instructions, you'll need to import a rom.  You can use the command `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
 
-## Variables
+## Expressions
 You can store variables by typing in [identifier] = [expression]
 ```
 > test = 12345
@@ -32,7 +32,7 @@ R08: 00000000 R09: 00000000 R10: 00000000 R11: 00000000
 R12: 00000000 R13: 03007F00 R14: 00000000 R15: 08000004
 CPSR: [-ZC--] 6000001F
 ```
-You can use variable expressions as arguments.  If the command takes multiple arguments, then each expression must not contain spaces.
+**You can use variable expressions in place of any numerical arguments**.  If the command takes multiple arguments, then each expression must not contain spaces.
 ```
 > chardata = $02000520
 > m chardata+$14C*4 10
@@ -40,8 +40,31 @@ You can use variable expressions as arguments.  If the command takes multiple ar
 02000A60:  00220046 3ACF4000 000C0020 0102001A   F."..@.: .......
 02000A70:  00000000 0077006D                     ....m.w.
 ```
-Expressions may be typed directly into to the console to print their value.  Hexadecimal numbers must be preceded by "0x", "$", or "x".
+Expressions may be typed directly into to the console to print their value.\  
+Hexadecimal numbers must be preceded by "0x", "$", or "x".
 
 ## Output
 The output file is "output.txt"
-Output is off by default.  By using the command `output true`, the registers and other data will be written to the file after each executed instruction.  You can pick a format preset using the `format` command.
+Output is off by default.  By using the command `output true`, the registers and other data will be written to output.txt after each executed CPU instruction.  You can pick a format preset using the `format` command.
+```
+> output true
+> format line
+> c 5
+```
+Result in output.txt:
+```
+08000000: EA000108  b $8000428            CPSR: [-ZC--]  R00: 08000000  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007f00  R14: 00000000  R15: 0800042c
+08000428: E3A00012  mov r0, 0x12          CPSR: [-ZC--]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007f00  R14: 00000000  R15: 08000430
+0800042C: E129F000  msr cpsr_fc, r0       CPSR: [-----]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007f00  R14: 00000000  R15: 08000434
+08000430: E59FD028  ldr sp, [pc, 0x28]    CPSR: [-----]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007fa0  R14: 00000000  R15: 08000438
+08000434: E3A0001F  mov r0, 0x1f          CPSR: [-----]  R00: 0000001f  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007fa0  R14: 00000000  R15: 0800043c
+```
+
+## Breakpoints
+There are four types of breakpoints you can set:
+- b \[*addr*\] \- break on execute
+- bw \[*addr*\] \- break on write
+- br \[*addr*\] \- break on read
+- bc \[*expression*\] \- break when [expression](#expressions) is Truthy
+
+Each of these sends control back to the user after it finishes executing the current CPU instruction, and printing a breakpoint message.  `b all` may be used to view all breakpoints.  These may be deleted using the corresponding d, dw, dr, dc.  `d all` clears all of them.
