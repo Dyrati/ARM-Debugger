@@ -10,7 +10,9 @@ ROM,SAVESTATE = sys.argv[1:] + [""]*(3-len(sys.argv))
 OUTPUTFILE = "output.txt"
 OutputHandle = None
 OutputState = False
+FileLimit = 10*2**20
 Format = "block"
+UserVars = {}
 LocalSaves = {}
 
 
@@ -111,7 +113,7 @@ helptext = """
     format [preset]                 set the format of data sent to the output file
                                         presets: line / block / linexl / blockxl  (xl suffix for Excel formatting)
     cls                             clear the console
-    h/help/?                        print the help text
+    help/?                          print the help text
     quit/exit                       exit the program
     e                               switch to Execution Mode
                                         In this mode, you may type in valid code which will be executed.
@@ -142,7 +144,7 @@ def disA(addr,count=1):
 def expstr(string):
     reps = {"sp":"r13", "lr":"r14", "pc":"r15"}
     reps.update(UserVars)
-    string = re.sub("[a-zA-Z]\w*", lambda x: reps[x.group(0)] if x.group(0) in reps else x.group(0), string)
+    string = re.sub("[a-zA-Z]\w*", lambda x: str(reps[x.group(0)]) if x.group(0) in reps else x.group(0), string)
     reps = {"\$":"0x", "#":"", r"\bx":"0x", r"r(\d+)":r"Reg[\1]", r"m\((.*)\)":r"mem_read(\1)"}
     for k,v in reps.items(): string = re.sub(k,v,string)
     return string
@@ -150,7 +152,7 @@ def expstr(string):
 
 def expeval(args):
     try: return eval(expstr("".join(args)))
-    except TypeError: return eval(expstr(args))
+    except TypeError: return eval(expstr(str(args)))
 
 
 def hexdump(addr,count=1,size=4):
@@ -190,21 +192,21 @@ def writefile(preset):
     bits = (31,30,29,28,5)
     cpsr = ''.join([cpsr[i] if Reg[16] & 1<<bits[i] else "-" for i in range(5)])
     if preset == "line":
-        outstring = f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(20) + f"{disasm(instr,Mode,RegInit[15])[:20]}".ljust(22) + f"CPSR: [{cpsr}]"
+        outstring = f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(20) + f"{disasm(instr,Mode,PC)[:20]}".ljust(22) + f"CPSR: [{cpsr}]"
         for i in range(16): 
             outstring += f"  R{i:0>2}: {Reg[i]:0>8x}"
     elif preset == "block":
-        outstring = f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(20) + f"{disasm(instr,Mode,RegInit[15])}"
+        outstring = f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(20) + f"{disasm(instr,Mode,PC)}"
         for i in range(16):
             if i%4 == 0: outstring += "\n"
             outstring += f"  R{i:0>2}: {Reg[i]:0>8x}"
         outstring += f"\n  CPSR: [{cpsr}]  {Reg[16]:0>8X}\n"
     elif preset == "linexl":
-        outstring = f"{Addr:0>8X}:\t{instr:0>{2*Size}X}\t{disasm(instr,Mode,RegInit[15])}\tCPSR: [{cpsr}]"
+        outstring = f"{Addr:0>8X}:\t{instr:0>{2*Size}X}\t{disasm(instr,Mode,PC)}\tCPSR: [{cpsr}]"
         for i in range(16): 
             outstring += f"\tR{i:0>2}: {Reg[i]:0>8x}"
     elif preset == "blockxl":
-        outstring = f"{Addr:0>8X}:\t{instr:0>{2*Size}X}\t{disasm(instr,Mode,RegInit[15])}\t\tCPSR: [{cpsr}]"
+        outstring = f"{Addr:0>8X}:\t{instr:0>{2*Size}X}\t{disasm(instr,Mode,PC)}\t\tCPSR: [{cpsr}]"
         for i in range(16):
             if i%4 == 0: outstring += "\n"
             outstring += f"\tR{i:0>2}: {Reg[i]:0>8x}"
@@ -212,11 +214,22 @@ def writefile(preset):
     OutputHandle.write(outstring + "\n")
 
 
+def ass0(ID,exp): UserVars[ID] = expeval(exp)
+def ass1(ID,exp): UserVars[ID] += expeval(exp)
+def ass2(ID,exp): UserVars[ID] -= expeval(exp)
+def ass3(ID,exp): UserVars[ID] *= expeval(exp)
+def ass4(ID,exp): UserVars[ID] /= expeval(exp)
+def ass5(ID,exp): UserVars[ID] //= expeval(exp)
+def ass6(ID,exp): UserVars[ID] <<= expeval(exp)
+def ass7(ID,exp): UserVars[ID] >>= expeval(exp)
+def ass8(ID,exp): UserVars[ID] %= expeval(exp)
+def ass9(ID,exp): UserVars[ID] != expeval(exp)
+assignment = {"": ass0, "+": ass1, "-": ass2, "*": ass3, "/": ass4, "//": ass5, "<<": ass6, ">>": ass7, "%": ass8, "!": ass9}
+
 
 Show = True
 Pause = True
 PauseCount = 0
-UserVars = {}
 lastcommand = ""
 ExecMode = False
 
@@ -240,8 +253,8 @@ while True:
                 if name == "": name,*args = lastcommand.split(" ")
                 else: lastcommand = command
                 if len(command.split("=")) == 2:
-                    identifier,expression = command.split("=")
-                    UserVars[identifier.strip()] = str(eval(expstr(expression)))
+                    identifier,op,expression = re.match("(\w+)\s*(\W*)=(.+)",command).groups()
+                    assignment[op](identifier,expression)
                 elif name == "n": 
                     Show,Pause = True,False
                     try: PauseCount = expeval(args[0])
@@ -309,7 +322,7 @@ while True:
                     elif arg0 == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
                 elif name == "format": Format = args[0]
                 elif name == "cls": os.system("cls")
-                elif name in {"h","help","?"}: print(helptext[1:-1])
+                elif name in {"help","?"}: print(helptext[1:-1])
                 elif name in {"quit","exit"}: quit()
                 elif name == "e": lastcommand = ""; ExecMode = True
                 else: print("Unrecognized command")
@@ -322,9 +335,9 @@ while True:
             continue
 
     # Find next instruction
-    RegInit = Reg.copy()
     Mode = Reg[16]>>5 & 1
     Size = 4 - 2*Mode
+    PC = Reg[15] + Size
     Addr = (Reg[15] - Size) & ~(Size-1)
     instr = mem_read(Addr,Size)
     if Mode and 0xF000 <= instr < 0xF800: instr = mem_read(Addr,4); Size = 4
@@ -343,7 +356,14 @@ while True:
         BreakState = ""
         ARMCPU.BreakState = ""
     if Show:
-        print(f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(19), disasm(instr, Mode, RegInit[15]))
+        print(f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(19), disasm(instr, Mode, PC))
         showreg()
     if OutputState:
         writefile(Format)
+        if OutputHandle.tell() > FileLimit:
+            print("=======================================")
+            print(f"Warning, output file has exceeded {FileLimit//2**20} MB")
+            print("=======================================")
+            s = input("Proceed? y/n\n")
+            if s == "y": FileLimit *= 10
+            else: OutputState = False; Pause = True
