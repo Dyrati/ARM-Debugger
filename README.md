@@ -6,17 +6,20 @@ Make sure you have Python installed, and download the repository.  You can then 
 From there, you can type in help or ? to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
-#### Imports and Savestates
 To execute instructions, you'll need to import a rom.  You can use the command `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
+
+That's pretty much all you need to get started.  The rest of this readme is just there to explain some features.
 
 ## Expressions
 You can store variables by typing in [identifier] = [expression]
 ```
 > test = 12345
 ```
-Then you can use those variables in place of any arguments.  You can also modify variables with compound assignment operators. (+=, -=, \*=, etc).  "expression" may include any combination of variables and mathematical operations.
+You can also modify variables with compound assignment operators. (+=, -=, \*=, etc).  "expression" may include any combination of variables and mathematical operations.
 
-Default variables are r0-r16, which refer to the registers (r16 is PSR).  sp/lr/pc are r13/r14/r15, and m(addr,size) is *size* bytes of data at *addr* (size=4 by default).  These may be modified just like any other variable:
+**You can use expressions in place of any numerical arguments**.
+
+Default variables are r0-r16, which refer to the registers (r16 is PSR).  sp/lr/pc are r13/r14/r15, and m(addr,size) is *size* bytes of data at *addr* (size=4 by default).  These may be modified and used in expressions just like any other variable:
 ```
 > i
 R00: 08000000 R01: 000000EA R02: 00000000 R03: 00000000
@@ -32,7 +35,6 @@ R08: 00000000 R09: 00000000 R10: 00000000 R11: 00000000
 R12: 00000000 R13: 03007F00 R14: 00000000 R15: 08000004
 CPSR: [-ZC--] 6000001F
 ```
-**You can use variable expressions in place of any numerical arguments**.  
 If the command takes multiple arguments, then each expression must not contain spaces.
 ```
 > chardata = $02000520
