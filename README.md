@@ -156,6 +156,7 @@ Result in output.txt:
 In addition to Normal Mode, there is Assembly Mode and Execution Mode. 
 These Modes are indicated by the input prompt.
 
+### Assembly Mode
 To enter Assembly Mode, type: `@` or `asm`.  
 In this mode, you can type in Thumb Code, which is then immediately executed.  If the Thumb code is not recognized, it will attempt to execute the command in Normal Mode.  You do not need to already be in Thumb mode to execute the instruction.  
 ```
@@ -182,8 +183,10 @@ R12: 080C9F63 R13: 03007E2C R14: 080CA095 R15: 0801487A
 CPSR: [----T] 0000003F
 ```
 
+### Execution Mode
 To enter Execution Mode, type: `$` or `exec`.  
 In this mode, you can type in real Python code, which is executed immediately.  
-Here you have access to all the global functions and variables of the script.
+Here you have unrestrained access to all the global functions and variables of the script.
 
-To reenter Normal Mode, type: `>` or `debug`.
+
+**To reenter Normal Mode, type: `>` or `debug`.**
