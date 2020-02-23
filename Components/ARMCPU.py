@@ -20,6 +20,7 @@ def mem_read(addr,size=4,signed=False):
     if region >= 8:
         reladdr = addr - 0x08000000
         value = int.from_bytes(ROM[reladdr:reladdr+size],"little")
+    elif region not in RegionMarkers: return 0
     else:
         base, length = RegionMarkers[region]
         reladdr = (addr & 0xFFFFFF) % length + base
@@ -35,6 +36,7 @@ def mem_read(addr,size=4,signed=False):
 
 def mem_write(addr,data,size=4):
     region = addr >> 24 & 0xF
+    if region not in RegionMarkers: return 0
     try: data = int.to_bytes(data % 2**(8*size),size,"little")
     except TypeError: size = len(data)
     if addr in WatchPoints and Executing:
@@ -46,8 +48,9 @@ def mem_write(addr,data,size=4):
         reladdr = (addr & 0xFFFFFF) % length + base
         RAM[reladdr:reladdr+size] = data
     except KeyError:
-        reladdr = addr - 0x08000000
-        ROM[reladdr:reladdr+size] = data
+        if region >= 8:
+            reladdr = addr - 0x08000000
+            ROM[reladdr:reladdr+size] = data
     if mem_read(0x040000DF,1) & 2**7: DMA()
 
 
