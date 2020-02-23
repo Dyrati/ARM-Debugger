@@ -1,8 +1,9 @@
 import os, sys, traceback, gzip, re
-import ARMCPU, Disassembler
-from ARMCPU import mem_read, mem_write
-from Disassembler import disasm
-from Assembler import assemble
+from Components import ARMCPU, Disassembler
+
+from Components.ARMCPU import mem_read, mem_write
+from Components.Disassembler import disasm
+from Components.Assembler import assemble
 
 
 # Initialization #
@@ -129,7 +130,7 @@ helptext = """
     ?/help                          print the help text
     quit/exit                       exit the program
 
-    @/asm                           switch to Assembler Mode
+    @/asm                           switch to Assembly Mode
                                         In this mode, you may type in Thumb code. The code is immediately executed.
                                         If the code is not recognized, it will attempt to execute it in Debug Mode
     $/exec                          switch to Execution Mode
@@ -362,7 +363,6 @@ def com_output(condition):
 def com_format(*args): global OutputFormat; OutputFormat = formatstr(" ".join(args))
 def com_cls(): os.system("cls")
 def com_help(): print(helptext[1:-1])
-def com_quit(): quit()
 
 
 commands = {
@@ -370,7 +370,7 @@ commands = {
     "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, 
     "def":com_def, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, 
     "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, 
-    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit}
+    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":quit, "exit":quit}
 
 
 Show = True
