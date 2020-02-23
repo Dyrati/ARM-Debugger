@@ -52,30 +52,11 @@ def reset_breakpoints():
     WatchPoints = set(); ARMCPU.WatchPoints = WatchPoints
     ReadPoints = set(); ARMCPU.ReadPoints = ReadPoints
     Conditionals = []; ARMCPU.Conditionals = Conditionals
-
-
-def UpdateGlobalInfo():
-    """Updates the global variables:  
-
-    MODE - 0 if in ARM mode, 1 if in THUMB mode  
-    SIZE - The number of bytes of the next instruction  
-    PCNT - What the program counter will be while executing the next instruction (r15 + SIZE)  
-    ADDR - The current address  
-    INSTR - The next instruction (in hex) to be executed
-    """
-    global MODE, SIZE, PCNT, ADDR, INSTR
-    MODE = REG[16]>>5 & 1
-    SIZE = 4 - 2*MODE
-    PCNT = REG[15] + SIZE
-    ADDR = (REG[15] - SIZE) & ~(SIZE-1)
-    INSTR = mem_read(ADDR,SIZE)
-    if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
     
 
 def importrom(filepath):
     with open(filepath,"rb") as f:
         ROM[:] = bytearray(f.read())
-    UpdateGlobalInfo()
 
 
 def importstate(filepath):
@@ -83,7 +64,6 @@ def importstate(filepath):
         RAM[:] = bytearray(f.read())
     for i in range(17):
         REG[i] = int.from_bytes(RAM[24+4*i:28+4*i],"little")
-    UpdateGlobalInfo()
 
 
 reset()
@@ -223,6 +203,24 @@ def showreg():
     print(s + f"CPSR: [{cpsr}] {REG[16]:0>8X}")
 
 
+def UpdateGlobalInfo():
+    """Updates the global variables:  
+
+    MODE - 0 if in ARM mode, 1 if in THUMB mode  
+    SIZE - The number of bytes of the next instruction  
+    PCNT - What the program counter will be while executing the next instruction (r15 + SIZE)  
+    ADDR - The current address  
+    INSTR - The next instruction (in hex) to be executed
+    """
+    global MODE, SIZE, PCNT, ADDR, INSTR
+    MODE = REG[16]>>5 & 1
+    SIZE = 4 - 2*MODE
+    PCNT = REG[15] + SIZE
+    ADDR = (REG[15] - SIZE) & ~(SIZE-1)
+    INSTR = mem_read(ADDR,SIZE)
+    if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
+
+
 def expstr(string):
     reps = {"sp":"r13", "lr":"r14", "pc":"r15"}
     def subs(matchobj): 
@@ -321,7 +319,6 @@ def com_dr(*args): ReadPoints.remove(expeval("".join(args)))
 def com_dc(*args): Conditionals.pop(expeval("".join(args)))
 def com_i(): 
     showreg()
-    UpdateGlobalInfo()
     print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
 def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
 def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
@@ -342,7 +339,6 @@ def com_save(identifier="PRIORSTATE"): LocalSaves[identifier] = RAM.copy(), REG.
 def com_load(identifier="PRIORSTATE"): 
     RAM[:] = LocalSaves[identifier][0].copy()
     REG[:] = LocalSaves[identifier][1].copy()
-    UpdateGlobalInfo()
 def com_dv(identifier): del UserVars[identifier]
 def com_df(identifier): del UserFuncs[identifier]
 def com_ds(identifier="PRIORSTATE"): del LocalSaves[identifier]
@@ -410,6 +406,7 @@ while True:
                 if expeval(command[0]): Commandque.append(command); command = command[1]
                 else: continue
             command = command.strip()
+            UpdateGlobalInfo()
             if command == "": command = lastcommand
             else: lastcommand = command
             if command in Modelist: ProgramMode = Modelist[Modelist.index(command) & ~1]; continue
@@ -439,15 +436,13 @@ while True:
         
 
     # Execute next instruction
-    UpdateGlobalInfo()
     if ProgramMode == "@" and SETINSTR is not None:
         SIZE, PCNT, INSTR = 2, REG[15], SETINSTR
-        ARMCPU.execute(INSTR, 1)
-        REG[15] -= 2*MODE
+        REG[15] -= 2
+        ARMCPU.execute(SETINSTR, 1)
+        if not MODE and REG[15] & 2: REG[15] += 2
         MODE = 1
     else:
-        INSTR = mem_read(ADDR,SIZE)
-        if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
         ARMCPU.execute(INSTR,MODE)
     INSTRCOUNT += 1
 
@@ -465,6 +460,8 @@ while True:
     if Show:
         print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
         showreg()
+    UpdateGlobalInfo()
+
     if expeval(OutputCondition):
         OutputHandle.write(eval(f'f"{OutputFormat}"'))
         if OutputHandle.tell() > FileLimit:
@@ -474,4 +471,3 @@ while True:
             s = input("Proceed? y/n: ")
             if s.lower() in {"y","yes"}: FileLimit *= 4
             else: Pause = True
-
