@@ -52,11 +52,30 @@ def reset_breakpoints():
     WatchPoints = set(); ARMCPU.WatchPoints = WatchPoints
     ReadPoints = set(); ARMCPU.ReadPoints = ReadPoints
     Conditionals = []; ARMCPU.Conditionals = Conditionals
+
+
+def UpdateGlobalInfo():
+    """Updates the global variables:  
+
+    MODE - 0 if in ARM mode, 1 if in THUMB mode  
+    SIZE - The number of bytes of the next instruction  
+    PCNT - What the program counter will be while executing the next instruction (r15 + SIZE)  
+    ADDR - The current address  
+    INSTR - The next instruction (in hex) to be executed
+    """
+    global MODE, SIZE, PCNT, ADDR, INSTR
+    MODE = REG[16]>>5 & 1
+    SIZE = 4 - 2*MODE
+    PCNT = REG[15] + SIZE
+    ADDR = (REG[15] - SIZE) & ~(SIZE-1)
+    INSTR = mem_read(ADDR,SIZE)
+    if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
     
 
 def importrom(filepath):
     with open(filepath,"rb") as f:
         ROM[:] = bytearray(f.read())
+    UpdateGlobalInfo()
 
 
 def importstate(filepath):
@@ -64,6 +83,7 @@ def importstate(filepath):
         RAM[:] = bytearray(f.read())
     for i in range(17):
         REG[i] = int.from_bytes(RAM[24+4*i:28+4*i],"little")
+    UpdateGlobalInfo()
 
 
 reset()
@@ -203,16 +223,6 @@ def showreg():
     print(s + f"CPSR: [{cpsr}] {REG[16]:0>8X}")
 
 
-def getinfo():
-    mode = REG[16]>>5 & 1
-    size = 4 - 2*mode
-    pc = REG[15] + size
-    addr = (REG[15] - size) & ~(size-1)
-    instr = mem_read(addr,size)
-    if mode and 0xF000 <= instr < 0xF800: instr = mem_read(addr,4); size = 4
-    return mode, size, pc, addr, instr
-
-
 def expstr(string):
     reps = {"sp":"r13", "lr":"r14", "pc":"r15"}
     def subs(matchobj): 
@@ -251,8 +261,8 @@ def formatstr(expstring):
             exp = exp[:-2]
         elif "asm" in exp:
             group = exp.split(":")
-            if ":" in exp: exp = f"{{disasm(INSTR, MODE, PC)[:{group[1]}]:<{group[1]}}}"
-            else: exp = "{disasm(INSTR, MODE, PC)}"
+            if ":" in exp: exp = f"{{disasm(INSTR, MODE, PCNT)[:{group[1]}]:<{group[1]}}}"
+            else: exp = "{disasm(INSTR, MODE, PCNT)}"
         else:
             if ":" in exp: exp,form = exp.split(":")
             else: form = ""
@@ -311,8 +321,8 @@ def com_dr(*args): ReadPoints.remove(expeval("".join(args)))
 def com_dc(*args): Conditionals.pop(expeval("".join(args)))
 def com_i(): 
     showreg()
-    mode, size, pc, addr, instr = getinfo()
-    print(f"{addr:0>8X}: {instr:0>{2*size}X}".ljust(19), disasm(instr, mode, pc))
+    UpdateGlobalInfo()
+    print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
 def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
 def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
 def com_m(addr,count=1,size=4): hexdump(expeval(addr),expeval(count),expeval(size))
@@ -332,6 +342,7 @@ def com_save(identifier="PRIORSTATE"): LocalSaves[identifier] = RAM.copy(), REG.
 def com_load(identifier="PRIORSTATE"): 
     RAM[:] = LocalSaves[identifier][0].copy()
     REG[:] = LocalSaves[identifier][1].copy()
+    UpdateGlobalInfo()
 def com_dv(identifier): del UserVars[identifier]
 def com_df(identifier): del UserFuncs[identifier]
 def com_ds(identifier="PRIORSTATE"): del LocalSaves[identifier]
@@ -376,6 +387,7 @@ commands = {
 Show = True
 Pause = True
 PauseCount = 0
+INSTRCOUNT = 0
 lastcommand = ">"
 OutputFormat = formatstr("line")
 ProgramMode = ">"
@@ -427,9 +439,9 @@ while True:
         
 
     # Execute next instruction
-    MODE, SIZE, PC, ADDR, INSTR = getinfo()
+    UpdateGlobalInfo()
     if ProgramMode == "@" and SETINSTR is not None:
-        SIZE, PC, INSTR = 2, REG[15], SETINSTR
+        SIZE, PCNT, INSTR = 2, REG[15], SETINSTR
         ARMCPU.execute(INSTR, 1)
         REG[15] -= 2*MODE
         MODE = 1
@@ -437,6 +449,7 @@ while True:
         INSTR = mem_read(ADDR,SIZE)
         if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
         ARMCPU.execute(INSTR,MODE)
+    INSTRCOUNT += 1
 
     # Handlers
     BreakState = ARMCPU.BreakState
@@ -450,7 +463,7 @@ while True:
         print("Hit " + BreakState)
         BreakState = ""
     if Show:
-        print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PC))
+        print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
         showreg()
     if expeval(OutputCondition):
         OutputHandle.write(eval(f'f"{OutputFormat}"'))
