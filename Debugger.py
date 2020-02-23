@@ -1,46 +1,48 @@
-import os, sys, gzip, re, traceback
+import os, sys, traceback, gzip, re
 import ARMCPU, Disassembler
-from ARMCPU import execute, mem_read, mem_write
+from ARMCPU import mem_read, mem_write
 from Disassembler import disasm
+from Assembler import assemble
 
 
 # Initialization #
 
-ROM,SAVESTATE = sys.argv[1:] + [""]*(3-len(sys.argv))
+ROMPATH = sys.argv[1] if len(sys.argv) > 1 else None
+STATEPATH = sys.argv[2] if len(sys.argv) > 2 else None
+RAM = bytearray(740322); ARMCPU.RAM = RAM; Disassembler.RAM = RAM
+ROM = bytearray(); ARMCPU.ROM = ROM; Disassembler.ROM = ROM
+REG = [0]*17; ARMCPU.REG = REG
+RegionMarkers = {
+    2:(0x85df,0x48400),     # WRAM
+    3:(0x1df,0x8000),       # IRAM
+    4:(0x8ebe7,0x8ee08),    # I/O
+    5:(0x81df,0x8400),      # PALETTE
+    6:(0x485df,0x60400),    # VRAM
+    7:(0x685df,0x68800)}    # OAM
+ARMCPU.RegionMarkers = RegionMarkers
+Disassembler.RegionMarkers = RegionMarkers
 OUTPUTFILE = "output.txt"
+FormatPresets = {
+    "line": r"{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}",
+    "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}",
+    "linexl": r"{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15}",
+    "blockxl": r"{addr}:\t{instr}\t{asm:20}\t\t{cpsr}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}"}
 OutputHandle = None
-OutputState = False
+OutputCondition = False
 FileLimit = 10*2**20
-Format = "line"
 UserVars = {}
+UserFuncs = {}
 LocalSaves = {}
 
 
-def reset_memory():
-    global Memory, Reg
-
-    Memory = [
-        bytearray(0x4000),      #BIOS
-        bytearray(),            #Not used
-        bytearray(0x40000),     #WRAM
-        bytearray(0x8000),      #IRAM
-        bytearray(0x400),       #I/O
-        bytearray(0x400),       #PALETTE
-        bytearray(0x18000),     #VRAM
-        bytearray(0x400),       #OAM
-        bytearray(),            #ROM
-    ]
-
-    Reg = [0]*17
-    Reg[0] = 0x08000000
-    Reg[1] = 0x000000EA
-    Reg[13] = 0x03007f00
-    Reg[15] = 0x08000004
-    Reg[16] = 0x6000001F
-
-    ARMCPU.Memory = Memory
-    ARMCPU.Reg = Reg
-    Disassembler.Memory = Memory
+def reset():
+    RAM[:] = bytearray(740322)
+    REG[:] = [0]*17
+    REG[0] = 0x08000000
+    REG[1] = 0x000000EA
+    REG[13] = 0x03007f00
+    REG[15] = 0x08000004
+    REG[16] = 0x6000001F
 
 
 def reset_breakpoints():
@@ -52,71 +54,87 @@ def reset_breakpoints():
     
 
 def importrom(filepath):
-    reset_memory()
     with open(filepath,"rb") as f:
-        Memory[8] = bytearray(f.read())
+        ROM[:] = bytearray(f.read())
 
 
 def importstate(filepath):
-    locations = [(2,0x8400,0x48400),(3,0x0,0x8000),(4,0x8ea08,0x8ee08),(5,0x8000,0x8400),(6,0x48400,0x60400),(7,0x68400,0x68800)]
     with gzip.open(filepath,"rb") as f:
-        save = bytearray(f.read())
-    for region,start,end in locations:
-        Memory[region] = save[start+0x1df:end+0x1df]
+        RAM[:] = bytearray(f.read())
     for i in range(17):
-        Reg[i] = int.from_bytes(save[24+4*i:28+4*i],"little")
+        REG[i] = int.from_bytes(RAM[24+4*i:28+4*i],"little")
 
 
-reset_memory()
+reset()
 reset_breakpoints()
-if ROM: importrom(ROM)
-if SAVESTATE: importstate(SAVESTATE)
+if ROMPATH: importrom(ROMPATH)
+if STATEPATH: importstate(STATEPATH)
 
 
 helptext = """
     [...]  Required arguments;  (...)  Optional arguments
-    Any numerical arguments may be replaced with User Expressions. Expressions may include "sp","lr","pc", "r0-r16", 
-    "m(addr,size)" (the data at addr; size=4 by default), and/or any user defined variables.
+    Any arguments may be replaced with User Expressions. Expressions may include any user defined variables,
+    and/or "sp","lr","pc", "r0-r16", "m(addr,size)", and/or any mathematical operations between them.
+    If the command takes multiple arguments, the expression must not contain spaces.
 
     Commands                        Effect
                                     (nothing) repeat the previous command
     n (count)                       execute the next instruction(s), displaying the registers
-    c (count)                       continue execution (if count is omitted, continues forever)
+    c (count)                       continue execution (if count is omitted, continues indefinitely)
     b [addr]                        set breakpoint (if addr is "all", prints all break/watch/read points)
     bw [addr]                       set watchpoint
     br [addr]                       set readpoint
-    bc [expression]                 set conditional breakpoint
+    bc [condition]                  set conditional breakpoint; conditions may be any expression
     d [addr]                        delete breakpoint (if addr is "all", deletes all break/watch/read points)
     dw [addr]                       delete watchpoint
     dr [addr]                       delete readpoint
-    dc [index]                      delete conditional breakpoint by index
+    dc [index]                      delete conditional breakpoint by index number
     i                               print the registers
     dist [addr] (count)             display *count* instructions starting from addr in THUMB
     disa [addr] (count)             display *count* instructions starting from addr in ARM
     m [addr] (count) (size)         display the memory at addr (count=1, size=4 by default)
 
-    [identifier][op][expression]    create/modify a User Variable; "op" may be =, +=, -=, *=, etc
-                                        if identifier is r0-r16 or sp/lr/pc, changes a register value
-                                        if identifier is m(addr,size), changes a value in memory
-    dv [identifier]                 delete user variable
+
+    if [condition]: [command]       execute *command* if *condition* is true
+    while [condition]: [command]    repeat *command* while *condition* is true
+    rep/repeat [count]: [command]   repeat *command* *count* times
+
+    [name][op][expression]          create/modify a User Variable; *op* may be =, +=, -=, *=, etc
+                                        if name is r0-r16 or sp/lr/pc, you can modify a register
+                                        if name is m(addr,size), you can modify a value in memory
+    def [name]: [commands]          bind a list of commands separated by semicolons to *name*
+                                        commands may be ANY valid debugger commands
+                                        execute these functions later by typing in "name()"
+                                        you can call functions within functions, with unlimited nesting
+    save (name)                     create a local save; name = PRIORSTATE by default
+    load (name)                     load a local save; name = PRIORSTATE by default
+    dv [name]                       delete user variable
+    df [name]                       delete user function
+    ds (name)                       delete local save; name = PRIORSTATE by default
     vars                            print all user variables
-    save (identifier)               create a local save; identifier = PRIORSTATE by default
-    load (identifier)               load a local save; identifier = PRIORSTATE by default
-    ds [identifier]                 delete local save
-    saves                           print all local save identifiers
+    funcs                           print all user functions
+    saves                           print all local saves
 
     importrom [filepath]            import a rom into the debugger
     importstate [filepath]          import a savestate
-    output [arg]                    if arg is "True", outputs to "output.txt"; if arg is "False", does not output
-                                        if arg is "clear", deletes the data in "output.txt"
-    format [preset]                 set the format of data sent to the output file
+    exportstate (filepath)          save the current state to a file; filepath = (most recent import) by default
+                                        will overwrite the destination, back up your saves!
+    reset                           reset the emulator (clears the RAM and resets registers)
+    output [condition]              when *condition* is True, outputs to "output.txt"; (after each instruction)
+                                        if *condition* is "clear", deletes all the data in "output.txt"
+    format [formatstr]              set the format of data sent to the output file
+                                        Interpolate expressions by enclosing them in curly braces
                                         presets: line / block / linexl / blockxl  (xl suffix for Excel formatting)
     cls                             clear the console
-    help/?                          print the help text
+    ?/help                          print the help text
     quit/exit                       exit the program
-    e                               switch to Execution Mode
-                                        In this mode, you may type in valid code which will be executed.
-                                        Enter nothing to return to Normal Mode.
+
+    @/asm                           switch to Assembler Mode
+                                        In this mode, you may type in Thumb code. The code is immediately executed.
+                                        If the code is not recognized, it will attempt to execute it in Debug Mode
+    $/exec                          switch to Execution Mode
+                                        In this mode, you may type in valid Python code to execute.
+    >/debug                         switch to Debug Mode (the default mode)
 """
 
 
@@ -140,16 +158,15 @@ def disA(addr,count=1):
         addr += 4
 
 
-def expstr(string):
-    reps = {"sp":"r13", "lr":"r14", "pc":"r15"}
-    reps.update(UserVars)
-    string = re.sub("[a-zA-Z]\w*", lambda x: str(reps[x.group(0)]) if x.group(0) in reps else x.group(0), string)
-    reps = {"\$":"0x", "#":"", r"\bx":"0x", r"r(\d+)":r"Reg[\1]", r"m\((.*)\)":r"mem_read(\1)"}
-    for k,v in reps.items(): string = re.sub(k,v,string)
-    return string
-
-
-def expeval(args): return eval(expstr(str(args)))
+def rlist_to_int(string):
+    rlist = 0
+    string = re.sub("r|R", "", string)
+    for m in re.finditer("[^,]+", string):
+        args = m.group(0).split("-")
+        if len(args) == 1: lo,hi = args*2
+        else: lo,hi = args
+        rlist |= 2**(int(hi) + 1) - 2**int(lo)
+    return rlist
 
 
 def hexdump(addr,count=1,size=4):
@@ -165,55 +182,113 @@ def hexdump(addr,count=1,size=4):
             if 32 <= c < 127: strdata += chr(c)
             else: strdata += "."
         offset += size
-        if offset % 16 == 0:
+        if offset >= 16:
+            addr += offset
+            offset = 0
             maxwidth = len(hexdata)
             print(f"{hexdata}  {strdata}")
-            hexdata, strdata = f"{addr+offset:0>8X}:  ", ""
+            hexdata, strdata = f"{addr:0>8X}:  ", ""
     if strdata: print(f"{hexdata.ljust(maxwidth)}  {strdata}")
 
 
 def showreg():
     s = ""
     for i in range(16):
-        s += f"R{i:0>2}: {Reg[i]:0>8X} "
+        s += f"R{i:0>2}: {REG[i]:0>8X} "
         if i & 3 == 3: s += "\n"
     cpsr = "NZCVT"
     bits = (31,30,29,28,5)
-    cpsr = ''.join([cpsr[i] if Reg[16] & 1<<bits[i] else "-" for i in range(5)])
-    print(s + f"CPSR: [{cpsr}] {Reg[16]:0>8X}")
+    cpsr = ''.join([cpsr[i] if REG[16] & 1<<bits[i] else "-" for i in range(5)])
+    print(s + f"CPSR: [{cpsr}] {REG[16]:0>8X}")
 
 
-def writefile(preset):
-    preset = preset.lower()
-    cpsr = "NZCVT"
-    bits = (31,30,29,28,5)
-    cpsr = ''.join([cpsr[i] if Reg[16] & 1<<bits[i] else "-" for i in range(5)])
-    if preset == "line":
-        outstring = f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(20) + f"{disasm(instr,Mode,PC)[:20]}".ljust(22) + f"CPSR: [{cpsr}]"
-        for i in range(16): 
-            outstring += f"  R{i:0>2}: {Reg[i]:0>8x}"
-    elif preset == "block":
-        outstring = f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(20) + f"{disasm(instr,Mode,PC)}"
-        for i in range(16):
-            if i%4 == 0: outstring += "\n"
-            outstring += f"  R{i:0>2}: {Reg[i]:0>8x}"
-        outstring += f"\n  CPSR: [{cpsr}]  {Reg[16]:0>8X}\n"
-    elif preset == "linexl":
-        outstring = f"{Addr:0>8X}:\t{instr:0>{2*Size}X}\t{disasm(instr,Mode,PC)}\tCPSR: [{cpsr}]"
-        for i in range(16): 
-            outstring += f"\tR{i:0>2}: {Reg[i]:0>8x}"
-    elif preset == "blockxl":
-        outstring = f"{Addr:0>8X}:\t{instr:0>{2*Size}X}\t{disasm(instr,Mode,PC)}\t\tCPSR: [{cpsr}]"
-        for i in range(16):
-            if i%4 == 0: outstring += "\n"
-            outstring += f"\tR{i:0>2}: {Reg[i]:0>8x}"
-        outstring += "\n"
-    OutputHandle.write(outstring + "\n")
+def getinfo():
+    mode = REG[16]>>5 & 1
+    size = 4 - 2*mode
+    pc = REG[15] + size
+    addr = (REG[15] - size) & ~(size-1)
+    instr = mem_read(addr,size)
+    if mode and 0xF000 <= instr < 0xF800: instr = mem_read(addr,4); size = 4
+    return mode, size, pc, addr, instr
 
+
+def expstr(string):
+    reps = {"sp":"r13", "lr":"r14", "pc":"r15"}
+    def subs(matchobj): 
+        m = matchobj.group(0)
+        if m in UserVars: return str(UserVars[m])
+        elif m in reps: return reps[m]
+        else: return m
+    string = re.sub(r"[a-zA-Z]\w*", subs, string)
+    reps = {"\$":"0x", "#":"", r"\bx(\d+)":r"0x\1", r"\br(\d+)":r"REG[\1]", r"\bm\((.*)\)":r"mem_read(\1)"}
+    for k,v in reps.items(): string = re.sub(k,v,string)
+    return string
+
+
+def expeval(arg):
+    if type(arg) is not str: return arg
+    else: return eval(expstr(arg))
+
+
+def formatstr(expstring):
+    if expstring in FormatPresets: expstring = FormatPresets[expstring]
+    expgroups = []
+    def replbraces(matchobj):
+        expgroups.append(matchobj.group(1))
+        return f"{{{len(expgroups)-1}}}"
+    expstring = re.sub("{(.*?)}", replbraces, expstring)
+    keywords = {"addr":"{ADDR:0>8X}", "instr":"{hex(INSTR)[2:].upper().zfill(2*SIZE):<8}",
+        "cpsr":"CPSR: [{''.join(['NZCVT'[i] if REG[16] & 1<<(31,30,29,28,5)[i] else '-' for i in range(5)])}]"}
+    for i in range(len(expgroups)):
+        exp = expgroups[i].replace(" ","")
+        if exp.lower() in keywords: exp = keywords[exp.lower()]
+        elif re.search(r"\br\d+",exp):  # handles rlists
+            rlist = rlist_to_int(exp)
+            exp = ""
+            for j in range(16):
+                if rlist & 2**j: exp += f"R{j:0>2}: {{REG[{j}]:0>8X}}  "
+            exp = exp[:-2]
+        elif "asm" in exp:
+            group = exp.split(":")
+            if ":" in exp: exp = f"{{disasm(INSTR, MODE, PC)[:{group[1]}]:<{group[1]}}}"
+            else: exp = "{disasm(INSTR, MODE, PC)}"
+        else:
+            if ":" in exp: exp,form = exp.split(":")
+            else: form = ""
+            exp = f"{{{expstr(exp)}:{form}}}"
+        expgroups[i] = exp
+    return (expstring + "\\n").format(*expgroups)
+
+
+def assign(command):
+    op = re.search("(=|!|>|<|\+|-|\*|//|/|&|\^|%|<<|>>|\*\*)?=", command)
+    if op and op.group(1) not in {"=","!",">","<"}:
+        op = op.group(0)
+        identifier,expression = command.split(op)
+        identifier = identifier.strip()
+        try: expression = expeval(expression.strip())
+        except SyntaxError: expression = eval(expression)
+        try: identifier = {"sp":"r13", "lr":"r14", "pc":"r15"}[identifier]
+        except KeyError: pass
+        matchr = re.match(r"r(\d+)$",identifier)
+        matchm = re.match(r"m\(([^,]+),?(.+)?\)$",identifier)
+        if matchr: exec(f"REG[{int(matchr.group(1))}]{op}{expression}")
+        elif matchm:
+            arg0,arg1 = map(expeval, matchm.groups())
+            if arg1 is None: arg1 = 4
+            if op == "=": mem_write(arg0, expression, arg1)
+            else: mem_write(arg0, eval(f"{mem_read(arg0,arg1)}{op[:-1]}{expression}"), arg1)
+        else:
+            if "[" in identifier:
+                identifier = re.sub(r"\[(.*?)\]", lambda x: f"[{expstr(x.group(1))}]", identifier)
+            identifier = re.sub(r"^([^ \[]*)", r"UserVars['\1']", identifier)
+            exec(f"{identifier}{op}{expression}")
+        return True
+        
 
 def com_n(count=1): 
-    global Show,Pause,PauseCount
-    Show,Pause,PauseCount = True, False, expeval(count)
+    global Show, Pause, PauseCount
+    Show, Pause, PauseCount = True, False, expeval(count)
 def com_c(count=0):
     global Show,Pause,PauseCount
     Show,Pause,PauseCount = False, False, expeval(count)
@@ -233,123 +308,140 @@ def com_d(*args):
 def com_dw(*args): WatchPoints.remove(expeval("".join(args)))
 def com_dr(*args): ReadPoints.remove(expeval("".join(args)))
 def com_dc(*args): Conditionals.pop(expeval("".join(args)))
-def com_i(): showreg()
+def com_i(): 
+    showreg()
+    mode, size, pc, addr, instr = getinfo()
+    print(f"{addr:0>8X}: {instr:0>{2*size}X}".ljust(19), disasm(instr, mode, pc))
 def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
 def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
 def com_m(addr,count=1,size=4): hexdump(expeval(addr),expeval(count),expeval(size))
-def com_setm(addr,data,size=4): mem_write(expeval(addr), expeval(data), expeval(size))
-def com_setr(regnum,value):
-    regnum = re.sub(r"^r(\d+)$", r"\1", regnum)
-    reps = {"sp":"13","lr":"14","pc":"15"}
-    if regnum in reps: regnum = reps[regnum]
-    Reg[expeval(regnum)] = expeval(value)
+def com_if(*args):
+    condition, command = re.match(r"(.+?)\s*:\s*(.+)"," ".join(args)).groups()
+    if expeval(condition): Commandque.append(command)
+def com_while(*args):
+    condition, command = re.match(r"(.+?)\s*:\s*(.+)"," ".join(args)).groups()
+    Commandque.append((condition, command))
+def com_repeat(*args):
+    count, args = re.match(r"(\d+?)\s*:\s*(.+)"," ".join(args)).groups()
+    Commandque.extend([args, int(count)])
+def com_def(defstring):
+    name, args = re.match(r"def\s+(.+?)\s*:\s*(.+)", defstring).groups()
+    UserFuncs[name] = list(map(lambda x: x.strip(), args.split(";")))
+def com_save(identifier="PRIORSTATE"): LocalSaves[identifier] = RAM.copy(), REG.copy()
+def com_load(identifier="PRIORSTATE"): 
+    RAM[:] = LocalSaves[identifier][0].copy()
+    REG[:] = LocalSaves[identifier][1].copy()
 def com_dv(identifier): del UserVars[identifier]
+def com_df(identifier): del UserFuncs[identifier]
+def com_ds(identifier="PRIORSTATE"): del LocalSaves[identifier]
 def com_vars(): print(UserVars)
-def com_save(identifier="PRIORSTATE"):
-    LocalSaves[identifier] = [], Reg.copy()
-    for i in range(8): LocalSaves[identifier][0].append(Memory[i].copy())
-def com_load(identifier="PRIORSTATE"):
-    for i in range(8): Memory[i] = LocalSaves[identifier][0][i].copy()
-    Reg[:] = LocalSaves[identifier][1].copy()
-def com_ds(identifier): del LocalSaves[identifier]
+def com_funcs():
+    out = []
+    for k,v in UserFuncs.items(): out.append(f"'{k}': {'; '.join(v)}")
+    print("{" + "\n ".join(out) + "}")
 def com_saves(): print(list(LocalSaves))
-def com_importrom(*args): importrom(" ".join(args).strip('"'))
-def com_importstate(*args): importstate(" ".join(args).strip('"'))
-def com_output(arg):
-    global OutputHandle, OutputState
-    arg = arg.lower()
-    if arg == "true": 
-        if not OutputHandle: OutputHandle = open(OUTPUTFILE,"w+")
-        else: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
-        OutputState = True
-    elif arg == "false": OutputHandle.close(); OutputState = False
-    elif arg == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
-def com_format(arg): global Format; Format = arg
+def com_importrom(*args): 
+    global ROMPATH
+    ROMPATH = " ".join(args).strip('"')
+    importrom(ROMPATH)
+def com_importstate(*args): 
+    global STATEPATH
+    STATEPATH = " ".join(args).strip('"')
+    importstate(STATEPATH)
+def com_exportstate(filepath=STATEPATH):
+    for i in range(17): RAM[24+4*i : 28+4*i] = int.to_bytes(REG[i], 4, "little")
+    with gzip.open(filepath,"wb") as f: f.write(RAM)
+def com_output(condition):
+    global OutputHandle, OutputCondition
+    if condition.lower() == "false": OutputHandle.close(); OutputCondition = False
+    elif not OutputHandle: OutputHandle = open(OUTPUTFILE,"w+")
+    elif OutputHandle.closed: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
+    if condition == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
+    elif condition.lower() == "true": OutputCondition = True
+    else: OutputCondition = condition
+def com_format(*args): global OutputFormat; OutputFormat = formatstr(" ".join(args))
 def com_cls(): os.system("cls")
 def com_help(): print(helptext[1:-1])
 def com_quit(): quit()
-def com_e(): global lastcommand,ExecMode; lastcommand = ""; ExecMode = True
+
 
 commands = {
     "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, 
-    "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "setm":com_setm, "setr":com_setr, "dv":com_dv, "vars":com_vars, 
-    "save":com_save, "load":com_load, "ds":com_ds, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, 
-    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit, 
-    "e":com_e}
-assignments = {"","+","-","*","//","/","&","^","%","<<",">>","**"}
+    "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, 
+    "def":com_def, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, 
+    "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, 
+    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit}
 
 
 Show = True
 Pause = True
 PauseCount = 0
-lastcommand = ""
-ExecMode = False
+lastcommand = ">"
+OutputFormat = formatstr("line")
+ProgramMode = ">"
+Modelist = ["@", "asm", "$", "exec", ">", "debug"]
+Commandque = []
 
 
 while True:
 
-    # Interface
+    # User Input
     while Pause:
-        if OutputState: OutputHandle.flush()
         try:
-            if ExecMode:
-                command = input(">> ")
-                if command == "": ExecMode = False
-                else:
-                    exec(command)
-                    try: print(eval(command))
-                    except SyntaxError: pass
+            if not Commandque and expeval(OutputCondition): OutputHandle.flush()
+            command = Commandque.pop() if Commandque else input(ProgramMode + " ")
+            if type(command) is int:
+                if command > 0: Commandque.extend([command-1, Commandque[-1]])
+                else: Commandque.pop()
+                continue
+            elif type(command) is tuple:
+                if expeval(command[0]): Commandque.append(command); command = command[1]
+                else: continue
+            command = command.strip()
+            if command == "": command = lastcommand
+            else: lastcommand = command
+            if command in Modelist: ProgramMode = Modelist[Modelist.index(command) & ~1]; continue
+            if ProgramMode == "@":
+                try: SETINSTR = assemble(command, REG[15]); Show = True; break
+                except (KeyError, ValueError, IndexError): SETINSTR = None
+            elif ProgramMode == "$":
+                try: print(eval(command))
+                except SyntaxError: exec(command)
+                continue
+            name,*args = command.split(" ")
+            if name == "def": commands["def"](command)
             else:
-                command = input("> ").strip()
-                name,*args = command.split(" ")
-                if name == "": name,*args = lastcommand.split(" ")
-                else: lastcommand = command
-
-                # Assignment operators
-                op = re.search(r"([^ a-zA-Z0-9]*)=",command)
-                if op and op.group(1) in assignments:
-                    identifier,expression = command.replace(" ","").split(op.group(0))
-                    op = op.group(0)
-                    expression = expeval(expression)
-                    matchr = re.match(r"r(\d+)$",identifier)
-                    matchm = re.match(r"m\(([^,]+),?(.+)?\)",identifier)
-                    if matchr: exec(f"Reg[{int(matchr.group(1))}]{op}{expression}")
-                    elif matchm:
-                        arg0,arg1 = expeval(matchm.group(1)), expeval(matchm.group(2))
-                        if arg1 == None: arg1 = 4
-                        newvalue = mem_read(arg0,arg1)
-                        exec(f"newvalue{op}{expression}")
-                        mem_write(arg0, newvalue, arg1)
-                    else: exec(f"UserVars[identifier]{op}{expression}")
-
-                # Command execution
-                else: 
-                    try: com = commands[name]
-                    except KeyError: 
+                if ";" in command:
+                    Commandque.extend(reversed(command.split(";"))); continue
+                matchfunc = re.match(r"(\w*)\s?\(.*\)", command)
+                if matchfunc and matchfunc.group(1) in UserFuncs:
+                    Commandque.extend(reversed(UserFuncs[matchfunc.group(1)])); continue
+                try: commands[name](*args)
+                except (KeyError, SyntaxError, TypeError):
+                    if not assign(command):
                         try: print(expeval(command))
                         except NameError: print("Unrecognized command")
-                    else: com(*args)
-        except Exception:
-            print(traceback.format_exc(),end="")
-    else:
-        if not Memory[8]: 
-            print("Error: No ROM loaded")
-            Pause = True
-            continue
+            if not (ROM or Pause):
+                print("Error: No ROM loaded"); Pause = True
+        except Exception: print(traceback.format_exc(), end="")
+        
 
-    # Find next instruction
-    Mode = Reg[16]>>5 & 1
-    Size = 4 - 2*Mode
-    PC = Reg[15] + Size
-    Addr = (Reg[15] - Size) & ~(Size-1)
-    instr = mem_read(Addr,Size)
-    if Mode and 0xF000 <= instr < 0xF800: instr = mem_read(Addr,4); Size = 4
-    execute(instr,Mode)
+    # Execute next instruction
+    MODE, SIZE, PC, ADDR, INSTR = getinfo()
+    if ProgramMode == "@" and SETINSTR is not None:
+        SIZE, PC, INSTR = 2, REG[15], SETINSTR
+        ARMCPU.execute(INSTR, 1)
+        REG[15] -= 2*MODE
+        MODE = 1
+    else:
+        INSTR = mem_read(ADDR,SIZE)
+        if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
+        ARMCPU.execute(INSTR,MODE)
 
     # Handlers
     BreakState = ARMCPU.BreakState
-    if Addr in BreakPoints: 
-        BreakState = f"BreakPoint: ${Addr:0>8X}"
+    if ADDR in BreakPoints: 
+        BreakState = f"BreakPoint: ${ADDR:0>8X}"
     for i in Conditionals:
         if eval(i): BreakState = f"BreakPoint: {i}"
     if PauseCount: PauseCount -= 1; Pause = not PauseCount
@@ -357,12 +449,11 @@ while True:
         Show,Pause = True,True
         print("Hit " + BreakState)
         BreakState = ""
-        ARMCPU.BreakState = ""
     if Show:
-        print(f"{Addr:0>8X}: {instr:0>{2*Size}X}".ljust(19), disasm(instr, Mode, PC))
+        print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PC))
         showreg()
-    if OutputState:
-        writefile(Format)
+    if expeval(OutputCondition):
+        OutputHandle.write(eval(f'f"{OutputFormat}"'))
         if OutputHandle.tell() > FileLimit:
             order = max(0,(int.bit_length(FileLimit)-1)//10)
             message = f"Warning: output file has exceeded {FileLimit//2**(10*order)} {('','K','M','G')[order]}B"
@@ -370,3 +461,4 @@ while True:
             s = input("Proceed? y/n: ")
             if s.lower() in {"y","yes"}: FileLimit *= 4
             else: Pause = True
+
