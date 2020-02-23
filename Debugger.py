@@ -437,11 +437,10 @@ while True:
 
     # Execute next instruction
     if ProgramMode == "@" and SETINSTR is not None:
-        SIZE, PCNT, INSTR = 2, REG[15], SETINSTR
+        MODE, SIZE, PCNT, INSTR = 1, 2, REG[15], SETINSTR
         REG[15] -= 2
         ARMCPU.execute(SETINSTR, 1)
-        if not MODE and REG[15] & 2: REG[15] += 2
-        MODE = 1
+        if not (REG[16] & 1<<5) and REG[15] & 2: REG[15] += 2
     else:
         ARMCPU.execute(INSTR,MODE)
     INSTRCOUNT += 1
