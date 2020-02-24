@@ -99,7 +99,8 @@ If the command takes multiple arguments, then each expression must not contain s
 - `saves` - print all local saves  
 
 **You can can write multiple commands in a single line by separating them with semicolons**  
-if, while, and repeat only apply to one command, however that command may be anything, including a function or a loop.
+If, while, and repeat only apply to one command, however that command may be anything, including a function or a loop.  
+Save and load only apply to local saves.  Local saves are temporarily stored in the current session.  To overwrite an actual savestate file, use `exportstate`.  
 
 
 ## File Commands
