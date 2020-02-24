@@ -361,15 +361,19 @@ def com_exportstate(filepath=STATEPATH):
     with gzip.open(filepath,"wb") as f: f.write(RAM)
 def com_output(condition):
     global OutputHandle, OutputCondition
-    if condition.lower() == "false": OutputHandle.close(); OutputCondition = False
-    elif not OutputHandle: OutputHandle = open(OUTPUTFILE,"w+")
-    elif OutputHandle.closed: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
-    if condition == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
-    elif condition.lower() == "true": OutputCondition = True
-    else: OutputCondition = condition
+    if condition.lower() == "false": 
+        OutputCondition = False
+        if OutputHandle: OutputHandle.close()
+    elif condition == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
+    else:
+        if not OutputHandle: OutputHandle = open(OUTPUTFILE,"w+")
+        elif OutputHandle.closed: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
+        if condition.lower() == "true": OutputCondition = True
+        else: OutputCondition = condition
 def com_format(*args): global OutputFormat; OutputFormat = formatstr(" ".join(args))
 def com_cls(): os.system("cls")
 def com_help(): print(helptext[1:-1])
+def com_quit(): sys.exit()
 
 
 commands = {
@@ -377,7 +381,7 @@ commands = {
     "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, 
     "def":com_def, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, 
     "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, 
-    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":quit, "exit":quit}
+    "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit}
 
 
 Show = True
@@ -459,7 +463,6 @@ while True:
     if Show:
         print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
         showreg()
-    UpdateGlobalInfo()
 
     if expeval(OutputCondition):
         OutputHandle.write(eval(f'f"{OutputFormat}"'))
@@ -470,3 +473,5 @@ while True:
             s = input("Proceed? y/n: ")
             if s.lower() in {"y","yes"}: FileLimit *= 4
             else: Pause = True
+
+    UpdateGlobalInfo()
