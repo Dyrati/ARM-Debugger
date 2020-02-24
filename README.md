@@ -48,15 +48,13 @@ r0 = test   # sets the actual register r0 equal to test
 m($02000000) = r0   # sets the memory at $02000000 equal to r0
 ```
 Default variables are **r0-r16, sp, lr, pc,** and **m(*addr*, *size*)**.  (size=4 by default).  r16 is CPSR  
-There are also 6 global variables that may be accessed, but not directly modified:
+There are also 4 global variables that may be accessed, but not directly modified:
 - `MODE` - 0 if in ARM mode, 1 if in THUMB mode 
-- `SIZE` - The number of bytes of the next instruction  
-- `PCNT` - What the program counter will be while executing the next instruction (r15 + SIZE)  
 - `ADDR` - The current address
 - `INSTR` - The next instruction (in hex) to be executed
-- `INSTRCOUNT` - The total number of CPU instructions executed since the beginning of the session
+- `CPUCOUNT` - The total number of CPU instructions executed since the beginning of the session
 
-Attempts to modify these variables will instead create a User Variable with the same name.  
+Attempts to modify these (or any other) global variables will instead create a User Variable with the same name.  
 In [Execution Mode](#alternate-debugger-modes), these and any other global variables may be modified.
 
 
@@ -98,9 +96,28 @@ If the command takes multiple arguments, then each expression must not contain s
 - `funcs` - print all user functions
 - `saves` - print all local saves  
 
-**You can can write multiple commands in a single line by separating them with semicolons**  
-If, while, and repeat only apply to one command, however that command may be anything, including a function or a loop.  
-Save and load only apply to local saves.  Local saves are temporarily stored in the current session.  To overwrite an actual savestate file, use `exportstate`.  
+**You can write multiple commands in a single line by separating them with `;`**  
+**You can use multiple-command if/while/repeat instructions by separating each inner command with `\`**  
+(using a semicolon will end the if/while/repeat instruction)
+```
+> wram = $02000000; m wram 32 1
+02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+02000010:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+> iter = 0; rep 32: m(wram + iter) = iter \ iter += 1; m wram 32 1
+02000000:  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F   ................
+02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
+> def clear: iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 \ iter += 1
+> arg0 = wram; arg1 = 16; clear()
+> m wram 32 1
+02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
+> funcs
+{'clear': iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 \ iter += 1}
+```
+
+The commands may be anything, including function calls, loops, and even [Debugger Mode Swaps](#alternate-debugger-modes).  
+
+`save` and `load` only apply to local saves.  Local saves are temporarily stored in the current session.  They can be given names and loaded with those names at any time.  To overwrite an actual savestate file, use `exportstate`.  
 
 
 ## File Commands
@@ -112,7 +129,7 @@ Save and load only apply to local saves.  Local saves are temporarily stored in 
 - `reset` - reset the emulator (clears the RAM and resets the registers)
 - `output [condition]`
     - after each CPU instruction, if *condition* is True, the debugger will write data to "output.txt"
-    - the data outputted may be customized using the format command
+    - the data outputted may be customized using the `format` command
     - if *condition* is "clear", deletes all of the data in "output.txt"
 - `format [formatstr]` - set the format of data sent to the output file
     - *formatstr* may be a string literal; data may be interpolated using curly braces
