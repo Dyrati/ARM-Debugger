@@ -152,6 +152,8 @@ Result in output.txt:
 08000430: E59FD028  ldr sp, [pc, 0x28]    CPSR: [-----]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007fa0  R14: 00000000  R15: 08000438
 08000434: E3A0001F  mov r0, 0x1f          CPSR: [-----]  R00: 0000001f  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007fa0  R14: 00000000  R15: 0800043c
 ```
+Note: if viewing in Notepad, uncheck Word Wrap to make it look nicer.  
+If viewing in Excel, try out linexl and blockxl.
 
 ## Alternate Debugger Modes
 In addition to Normal Mode, there is Assembly Mode and Execution Mode. 
