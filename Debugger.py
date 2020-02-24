@@ -55,6 +55,7 @@ def reset_breakpoints():
     
 
 def importrom(filepath):
+    reset()
     with open(filepath,"rb") as f:
         ROM[:] = bytearray(f.read())
 
@@ -270,7 +271,7 @@ def formatstr(expstring):
 
 
 def assign(command):
-    op = re.search("(=|!|>|<|\+|-|\*|//|/|&|\^|%|<<|>>|\*\*)?=", command)
+    op = re.search("(=|!|>|<|\+|-|\*|//|/|&|\^|\||%|<<|>>|\*\*)?=", command)
     if op and op.group(1) not in {"=","!",">","<"}:
         op = op.group(0)
         identifier,expression = command.split(op)
@@ -356,7 +357,8 @@ def com_importstate(*args):
     global STATEPATH
     STATEPATH = " ".join(args).strip('"')
     importstate(STATEPATH)
-def com_exportstate(filepath=STATEPATH):
+def com_exportstate(filepath=None):
+    if filepath is None: filepath = STATEPATH
     for i in range(17): RAM[24+4*i : 28+4*i] = int.to_bytes(REG[i], 4, "little")
     with gzip.open(filepath,"wb") as f: f.write(RAM)
 def com_output(condition):
@@ -387,11 +389,11 @@ commands = {
 Show = True
 Pause = True
 PauseCount = 0
-INSTRCOUNT = 0
+CPUCOUNT = 0
 lastcommand = ">"
-OutputFormat = formatstr("line")
-ProgramMode = ">"
 Modelist = ["@", "asm", "$", "exec", ">", "debug"]
+ProgramMode = ">"
+OutputFormat = formatstr("line")
 Commandque = []
 
 
@@ -415,39 +417,36 @@ while True:
             else: lastcommand = command
             if command in Modelist: ProgramMode = Modelist[Modelist.index(command) & ~1]; continue
             if ProgramMode == "@":
-                try: SETINSTR = assemble(command, REG[15]); Show = True; break
+                try: SETINSTR = assemble(command, REG[15] + 2*MODE); Show = True; break
                 except (KeyError, ValueError, IndexError): SETINSTR = None
             elif ProgramMode == "$":
                 try: print(eval(command))
                 except SyntaxError: exec(command)
                 continue
             name,*args = command.split(" ")
-            if name == "def": commands["def"](command)
-            else:
-                if ";" in command:
-                    Commandque.extend(reversed(command.split(";"))); continue
-                matchfunc = re.match(r"(\w*)\s?\(.*\)", command)
-                if matchfunc and matchfunc.group(1) in UserFuncs:
-                    Commandque.extend(reversed(UserFuncs[matchfunc.group(1)])); continue
-                try: commands[name](*args)
-                except (KeyError, SyntaxError, TypeError):
-                    if not assign(command):
-                        try: print(expeval(command))
-                        except NameError: print("Unrecognized command")
-            if not (ROM or Pause):
-                print("Error: No ROM loaded"); Pause = True
+            if name == "def": commands["def"](command); continue
+            elif ";" in command: Commandque.extend(reversed(command.split(";"))); continue
+            elif "\\" in command and name not in {"if", "rep", "repeat", "while"}:
+                Commandque.extend(reversed(command.split("\\"))); continue
+            matchfunc = re.match(r"(\w*)\s?\(.*\)", command)
+            if matchfunc and matchfunc.group(1) in UserFuncs:
+                Commandque.extend(reversed(UserFuncs[matchfunc.group(1)])); continue
+            try: commands[name](*args)
+            except (KeyError, SyntaxError, TypeError):
+                if not assign(command):
+                    try: print(expeval(command))
+                    except NameError: print("Unrecognized command")
         except Exception: print(traceback.format_exc(), end="")
         
 
     # Execute next instruction
     if ProgramMode == "@" and SETINSTR is not None:
-        MODE, SIZE, PCNT, INSTR = 1, 2, REG[15], SETINSTR
-        REG[15] -= 2
+        MODE, SIZE, PCNT, INSTR = 1, 2, REG[15] + 2*MODE, SETINSTR
         ARMCPU.execute(SETINSTR, 1)
-        if not (REG[16] & 1<<5) and REG[15] & 2: REG[15] += 2
+        if not (REG[16] & 1<<5) and REG[15] & 2: REG[15] -= 2
     else:
         ARMCPU.execute(INSTR,MODE)
-    INSTRCOUNT += 1
+    CPUCOUNT += 1
 
     # Handlers
     BreakState = ARMCPU.BreakState
