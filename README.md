@@ -4,7 +4,7 @@ An easy to use, powerful debugger.  Import a rom, and an sgm file, and set break
 
 ## Set Up
 Make sure you have Python installed, and download the repository.  You can then unpack it and open "Debugger.py", and that's it!
-From there, you can type in help or ? to get detailed info on the available commands.
+From there, you can type in `help` or `?` to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
 To execute CPU instructions, you'll need to import a rom.  You can use the command `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
