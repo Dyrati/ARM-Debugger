@@ -202,7 +202,7 @@ def HiRegBx(instr):
     Op,Hd,Hs,Rs,Rd = instr>>8 & 3, instr>>7 & 1, instr>>6 & 1, instr>>3 & 7, instr & 7
     Rd += 8*Hd
     Rs += 8*Hs
-    if Op == 0: REG[Rd] += REG[Rs]
+    if Op == 0: REG[Rd] = (REG[Rd] + REG[Rs]) & 0xFFFFFFFF
     elif Op == 1: compare(REG[Rd],-REG[Rs])
     elif Op == 2: REG[Rd] = REG[Rs]
     elif Op == 3:
@@ -248,14 +248,16 @@ def ldrstr_sp(instr):
 
 def get_reladdr(instr):
     Op,Rd,Word = instr>>11 & 1, instr>>8 & 7, instr & 0xFF
-    if not Op: REG[Rd] = REG[15] - (REG[15] & 2) + Word*4
+    if not Op: REG[Rd] = (REG[15] & ~2) + Word*4
     else: REG[Rd] = REG[13] + Word*4
+    REG[Rd] &= 0xFFFFFFFF
 
 
 def add_sp(instr):
     S,Word = instr>>7 & 1, instr & 0x7F
     if not S: REG[13] += Word*4
     else: REG[13] -= Word*4
+    REG[13] &= 0xFFFFFFFF
 
 
 def pushpop(instr):
@@ -271,6 +273,7 @@ def pushpop(instr):
             REG[i] = mem_read(REG[13], 4)
             REG[13] += 4
         if REG[15] & 1: REG[15] += 1
+    REG[13] &= 0xFFFFFFFF
 
 
 def stmldm(instr):
@@ -281,16 +284,17 @@ def stmldm(instr):
             if not Op: mem_write(addr, REG[i], 4)
             else: REG[i] = mem_read(addr, 4)
             addr += 4
-    REG[Rb] = addr
+    REG[Rb] = addr & 0xFFFFFFFF
 
 
 def b_if(instr):
     Cond,Offset = instr>>8 & 15, instr & 0xFF
-    if conditions[Cond](REG[16]>>28): REG[15] += ((Offset^0x80) - 0x80)*2 + 2
+    if conditions[Cond](REG[16]>>28): 
+        REG[15] = (REG[15] + ((Offset^0x80) - 0x80)*2 + 2) & 0xFFFFFFFF
 
 
 def branch(instr):
-    REG[15] += ((instr & 0x7FF ^ 0x400) - 0x400)*2 + 2
+    REG[15] = (REG[15] + ((instr & 0x7FF ^ 0x400) - 0x400)*2 + 2) & 0xFFFFFFFF
 
 
 def bl(instr):
@@ -300,7 +304,7 @@ def bl(instr):
         REG[14] = link
     else:
         REG[14] = REG[15] + 1
-        REG[15] += (((instr & 0x7FF ^ 0x400) << 11 | (instr >> 16) & 0x7FF) - 0x200000)*2 + 2
+        REG[15] = (REG[15] + (((instr & 0x7FF ^ 0x400) << 11 | (instr >> 16) & 0x7FF) - 0x200000)*2 + 2) & 0xFFFFFFFF
 
 
 ThumbBounds = (
@@ -379,7 +383,7 @@ def arm_bx(instr):
 def arm_branch(instr):
     L, Offset = instr >> 24 & 1, instr & 0xFFFFFF
     if L: REG[14] = REG[15] - 4
-    REG[15] += 4 + Offset*4
+    REG[15] = (REG[15] + 4 + Offset*4) & 0XFFFFFFFF
 
 
 def clz(instr):
@@ -396,16 +400,16 @@ def multiply(instr):
         S = 0
         Rs = (Rs >> 16*y & 0xFFFF ^ 2**15) - 2**15
         if OpCode != 1: Rm = (Rm >> 16*x & 0xFFFF ^ 2**15) - 2**15
-        if OpCode == 0: REG[Rd] = (Rm*Rs + REG[Rn]) % 2**32
+        if OpCode == 0: REG[Rd] = (Rm*Rs + REG[Rn]) & 0xFFFFFFFF
         elif OpCode == 1: 
             Rm = (Rm ^ 2**31) - 2**31
-            REG[Rd] = ((Rm*Rs >> 16) + REG[Rn]*(1-x)) % 2**32
+            REG[Rd] = ((Rm*Rs >> 16) + REG[Rn]*(1-x)) & 0xFFFFFFFF
         elif OpCode == 2:
             result = (REG[Rd] << 32 | REG[Rn]) + Rm*Rs
             REG[Rd] = result >> 32 & 0xFFFFFFFF
             REG[Rn] = result & 0xFFFFFFFF
         elif OpCode == 3:
-            REG[Rd] = Rm*Rs
+            REG[Rd] = Rm*Rs & 0xFFFFFFFF
     else:
         if OpCode & 2:  #signed
             Rm = (Rm ^ 2**31) - 2**31
@@ -432,7 +436,7 @@ def datatransfer(instr):
     if D:
         if I: Offset = barrelshift(REG[Rm],Shift,Typ)
         if P: addr += Offset*U
-        if not P or W: REG[Rn] += Offset*U
+        if not P or W: REG[Rn] = (REG[Rn] + Offset*U) & 0xFFFFFFFF
         if L: REG[Rd] = mem_read(addr, 4 - 3*B)
         else: mem_write(addr, REG[Rd], 4 - 3*B)
     else:
@@ -441,7 +445,7 @@ def datatransfer(instr):
         if B: Offset = (Offset >> 8 & 15) << 4 | Offset & 15
         else: Offset = REG[Rm]
         if P: addr += Offset*U
-        if not P or W: REG[Rn] += Offset*U
+        if not P or W: REG[Rn] = (REG[Rn] + Offset*U) & 0xFFFFFFFF
         if Typ == 0:
             temp = REG[Rm]  # in case Rm == Rd
             REG[Rd] = mem_read(REG[Rn],2-B)
@@ -467,7 +471,7 @@ def blocktransfer(instr):
     for i in range(16):
         if Rlist & 1<<index:
             if L: REG[index] = mem_read(addr,4)
-            else: mem_write(addr,REG[index],4)
+            else: mem_write(addr, REG[index],4)
             addr += 4*direction
         index += direction
     if P: addr -= 4*direction
