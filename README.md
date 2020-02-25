@@ -9,6 +9,14 @@ You can also start Debugger.py from the command line with two optional arguments
 
 To execute CPU instructions, you'll need to import a rom.  You can use the command `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
 
+```
+> importrom C:\Users\GenericName\Games\Roms\romname.gba
+> importstate C:\Users\GenericName\Games\Saves\statename.sgm
+
+# works with or without quotation marks, regardless of spaces in the path name, 
+# so clicking and dragging a file to the command window will work after typing importrom/importstate
+```
+
 That's pretty much all you need to get started.  The rest of this readme is just here to explain some features.
 
 
