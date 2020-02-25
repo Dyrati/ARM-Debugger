@@ -171,6 +171,14 @@ def rlist_to_int(string):
     return rlist
 
 
+def cpsr_str(cpsr):
+    out = ["N","Z","C","V","T"]
+    for i in range(4): 
+        if not cpsr & 2**(31-i): out[i] = "-"
+    if not cpsr & 32: out[4] = "-"
+    return "[" + "".join(out) + "]"
+
+
 def hexdump(addr,count=1,size=4):
     hexdata = f"{addr:0>8X}:  "
     strdata = ""
@@ -198,10 +206,7 @@ def showreg():
     for i in range(16):
         s += f"R{i:0>2}: {REG[i]:0>8X} "
         if i & 3 == 3: s += "\n"
-    cpsr = "NZCVT"
-    bits = (31,30,29,28,5)
-    cpsr = ''.join([cpsr[i] if REG[16] & 1<<bits[i] else "-" for i in range(5)])
-    print(s + f"CPSR: [{cpsr}] {REG[16]:0>8X}")
+    print(s + cpsr_str(REG[16]))
 
 
 def UpdateGlobalInfo():
@@ -211,7 +216,7 @@ def UpdateGlobalInfo():
     SIZE - The number of bytes of the next instruction  
     PCNT - What the program counter will be while executing the next instruction (r15 + SIZE)  
     ADDR - The current address  
-    INSTR - The next instruction (in hex) to be executed
+    INSTR - The next machine code instruction to be executed
     """
     global MODE, SIZE, PCNT, ADDR, INSTR
     MODE = REG[16]>>5 & 1
@@ -242,32 +247,35 @@ def expeval(arg):
 
 def formatstr(expstring):
     if expstring in FormatPresets: expstring = FormatPresets[expstring]
-    expgroups = []
-    def replbraces(matchobj):
-        expgroups.append(matchobj.group(1))
-        return f"{{{len(expgroups)-1}}}"
-    expstring = re.sub("{(.*?)}", replbraces, expstring)
-    keywords = {"addr":"{ADDR:0>8X}", "instr":"{hex(INSTR)[2:].upper().zfill(2*SIZE):<8}",
-        "cpsr":"CPSR: [{''.join(['NZCVT'[i] if REG[16] & 1<<(31,30,29,28,5)[i] else '-' for i in range(5)])}]"}
-    for i in range(len(expgroups)):
-        exp = expgroups[i].replace(" ","")
-        if exp.lower() in keywords: exp = keywords[exp.lower()]
-        elif re.search(r"\br\d+",exp):  # handles rlists
-            rlist = rlist_to_int(exp)
+    out = [""]
+    def subs(m):
+        m = m.group(1).split(":")
+        form = ":" + m[1] if len(m) > 1 else ""
+        if re.search(r"\br\d+", m[0]):  # handles rlists
+            rlist = rlist_to_int(m[0])
+            if not form: form = ":0>8X"
             exp = ""
             for j in range(16):
-                if rlist & 2**j: exp += f"R{j:0>2}: {{REG[{j}]:0>8X}}  "
-            exp = exp[:-2]
-        elif "asm" in exp:
-            group = exp.split(":")
-            if ":" in exp: exp = f"{{disasm(INSTR, MODE, PCNT)[:{group[1]}]:<{group[1]}}}"
-            else: exp = "{disasm(INSTR, MODE, PCNT)}"
+                if rlist & 2**j: exp += f"R{j:0>2}: {{REG[{j}]{form}}}  "
+            return exp[:-2]
+        elif m[0] in {"addr", "ADDR"}: return f"{{ADDR{form if form else ':0>8X'}}}"
+        elif m[0] in {"instr", "INSTR"}: return f"{{INSTR{form if form else ':0>8X'}}}"
+        elif m[0] in {"asm", "ASM"}: 
+            try:
+                form = int(m[1])
+                form1, form2 = f"[:{form}]", f":<{form}"
+            except (IndexError, ValueError): 
+                form1, form2 = form, form
+            out.append(f"disasm(INSTR, MODE, PCNT){form1}")
+            return f"{{_G[{len(out)-2}]{form2}}}"
+        elif m[0] in {"cpsr", "CPSR"}:
+            out.append("cpsr_str(REG[16])")
+            return f"CPSR: {{_G[{len(out)-2}]{form}}}"
         else:
-            if ":" in exp: exp,form = exp.split(":")
-            else: form = ""
-            exp = f"{{{expstr(exp)}:{form}}}"
-        expgroups[i] = exp
-    return (expstring + "\\n").format(*expgroups)
+            out.append(expstr(m[0]))
+            return f"{{_G[{len(out)-2}]{form}}}"
+    out[0] = re.sub(r"{(.*?)}", subs, expstring.replace("\\n","\n").replace("\\t","\t") + "\n")
+    return out
 
 
 def assign(command):
@@ -372,7 +380,9 @@ def com_output(condition):
         elif OutputHandle.closed: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
         if condition.lower() == "true": OutputCondition = True
         else: OutputCondition = condition
-def com_format(*args): global OutputFormat; OutputFormat = formatstr(" ".join(args))
+def com_format(command): 
+    global OutputFormat
+    OutputFormat = formatstr(re.match(r"format\s*:\s*(.*)", command).group(1))
 def com_cls(): os.system("cls")
 def com_help(): print(helptext[1:-1])
 def com_quit(): sys.exit()
@@ -423,15 +433,17 @@ while True:
                 try: print(eval(command))
                 except SyntaxError: exec(command)
                 continue
-            name,*args = command.split(" ")
-            if name == "def": commands["def"](command); continue
+            name, args = re.match(r"([^ :]+)\s*:?(.*)", command).groups()
+            if name in {"def", "format"}: commands[name](command); continue
             elif ";" in command: Commandque.extend(reversed(command.split(";"))); continue
             elif "\\" in command and name not in {"if", "rep", "repeat", "while"}:
                 Commandque.extend(reversed(command.split("\\"))); continue
             matchfunc = re.match(r"(\w*)\s?\(.*\)", command)
             if matchfunc and matchfunc.group(1) in UserFuncs:
                 Commandque.extend(reversed(UserFuncs[matchfunc.group(1)])); continue
-            try: commands[name](*args)
+            try: 
+                if args: commands[name](*args.strip().split(" "))
+                else: commands[name]()
             except (KeyError, SyntaxError, TypeError):
                 if not assign(command):
                     try: print(expeval(command))
@@ -464,7 +476,8 @@ while True:
         showreg()
 
     if expeval(OutputCondition):
-        OutputHandle.write(eval(f'f"{OutputFormat}"'))
+        OutputHandle.write(OutputFormat[0].format(ADDR=ADDR, INSTR=INSTR, REG=REG, MODE=MODE, CPUCOUNT=CPUCOUNT, 
+            _G=[eval(x) for x in OutputFormat[1:]]))
         if OutputHandle.tell() > FileLimit:
             order = max(0,(int.bit_length(FileLimit)-1)//10)
             message = f"Warning: output file has exceeded {FileLimit//2**(10*order)} {('','K','M','G')[order]}B"
