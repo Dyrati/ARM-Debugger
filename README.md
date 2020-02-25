@@ -55,7 +55,7 @@ There are also 4 global variables that may be accessed, but not directly modifie
 - `CPUCOUNT` - The total number of CPU instructions executed since the beginning of the session
 
 Attempts to modify these (or any other) global variables will instead create a User Variable with the same name.  
-In [Execution Mode](#alternate-debugger-modes), these and any other global variables may be modified.
+In [Execution Mode](#execution-mode), these and any other global variables may be modified.
 
 
 You can also modify variables with compound assignment operators. (+=, -=, \*=, etc).  `m(r1) += r2`  
@@ -207,8 +207,8 @@ CPSR: [----T] 0000003F
 ### Execution Mode
 To enter Execution Mode, type: `$` or `exec`.  
 In this mode, you can type in real Python code, which is executed immediately.  
-User Expressions do not work in this mode.  The commands must be valid Python.
 Here you have unrestrained access to all the global functions and variables of the script.  
+User Expressions do not work in this mode.  The commands must be valid Python.  
 Some useful commands in this mode include:
 - `dir()` - displays all the global variable identifiers
 - `UserVars, UserFuncs` - the user variables and user functions
