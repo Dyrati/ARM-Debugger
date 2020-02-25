@@ -25,9 +25,9 @@ Disassembler.RegionMarkers = RegionMarkers
 OUTPUTFILE = "output.txt"
 FormatPresets = {
     "line": r"{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}",
-    "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}",
+    "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}\n",
     "linexl": r"{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15:\t}",
-    "blockxl": r"{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}"}
+    "blockxl": r"{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}\n"}
 OutputHandle = None
 OutputCondition = False
 FileLimit = 10*2**20
@@ -332,17 +332,25 @@ def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
 def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
 def com_m(addr,count=1,size=4): hexdump(expeval(addr),expeval(count),expeval(size))
 def com_if(*args):
-    condition, command = re.match(r"(.+?)\s*:\s*(.+)"," ".join(args)).groups()
-    if expeval(condition): Commandque.append(command)
+    condition, command = re.match(r"(.+?)\s*:\s*(.*)"," ".join(args)).groups()
+    if expeval(condition) and command: Commandque.append(command)
 def com_while(*args):
-    condition, command = re.match(r"(.+?)\s*:\s*(.+)"," ".join(args)).groups()
-    Commandque.append((condition, command))
+    condition, command = re.match(r"(.+?)\s*:\s*(.*)"," ".join(args)).groups()
+    if command: Commandque.append((condition, command))
 def com_repeat(*args):
-    count, args = re.match(r"(\d+?)\s*:\s*(.+)"," ".join(args)).groups()
-    Commandque.extend([args, int(count)])
-def com_def(defstring):
-    name, args = re.match(r"def\s+(.+?)\s*:\s*(.+)", defstring).groups()
-    UserFuncs[name] = [s.strip() for s in args.split(";")]
+    count, args = re.match(r"(\d+?)\s*:\s*(.*)"," ".join(args)).groups()
+    if args: Commandque.extend([args, int(count)])
+def com_def(defstring, depth=0):
+    name, args = re.match(r"def\s+(.+?)\s*:\s*(.*)", defstring).groups()
+    if not(args):
+        depth += 1
+        UserFuncs[name] = []
+        while True:
+            s = input(" "*(depth*4+2)).strip()
+            if not s: break
+            elif re.match(r"def", s): com_def(s, depth)
+            else: UserFuncs[name].append(s)
+    else: UserFuncs[name] = [s.strip() for s in args.split(";")]
 def com_save(identifier="PRIORSTATE"): LocalSaves[identifier] = RAM.copy(), REG.copy()
 def com_load(identifier="PRIORSTATE"): 
     RAM[:] = LocalSaves[identifier][0].copy()
@@ -393,10 +401,6 @@ commands = {
     "def":com_def, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, 
     "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, 
     "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit}
-
-for func in commands.values(): 
-    try: del globals()[func.__name__]
-    except KeyError: pass
 
 
 Show = True
