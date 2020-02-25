@@ -131,13 +131,12 @@ The commands may be anything, including function calls, loops, and even [Debugge
 ## File Commands
 - `importrom [filepath]` - import a rom into the debugger
 - `importstate [filepath]` - import a savestate
-- `exportstate (filepath)`
-    - save the current state to a file; *filepath* = (most recent import) by default
+- `exportstate (filepath)` - save the current state to a file; 
+    - *filepath* = (most recent import) by default
     - will overwrite the destination, back up your saves!
 - `reset` - reset the emulator (clears the RAM and resets the registers)
 - `output [condition]`
     - after each CPU instruction, if *condition* is True, the debugger will write data to "output.txt"
-    - the data outputted may be customized using the `format` command
     - if *condition* is "clear", deletes all of the data in "output.txt"
 - `format: [formatstr]` - set the format of data sent to the output file; see [Formats](#formats)
 
@@ -159,7 +158,8 @@ example text 08000428: E3A00012  mov r0, 0x12
 example text 0800042C: E129F000  msr cpsr_fc, r0
   R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000
 ```
-interpolated values may optionally have a format specified with the following syntax: `{expression:format}`  
+
+**Interpolated values may optionally have a format specified with the following syntax: `{expression:format}`**
 - Formats are in accordance with the 
   [Python Format Specification Mini-Language](https://docs.python.org/3/library/string.html#formatspec)  
 - since the length of `{asm}` varies, I added an option to set its length with the syntax: `{asm:length}`
