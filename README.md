@@ -139,35 +139,37 @@ The commands may be anything, including function calls, loops, and even [Debugge
     - after each CPU instruction, if *condition* is True, the debugger will write data to "output.txt"
     - the data outputted may be customized using the `format` command
     - if *condition* is "clear", deletes all of the data in "output.txt"
-- `format: [formatstr]` - set the format of data sent to the output file
-    - *formatstr* may be a string literal; data may be interpolated using curly braces
-    ```
-    > output True
-    > format: example text {addr}: {instr}  {asm}\n  {r0-r3}
-    > c 3
-    ```
-    Result in output.txt:
-    ```
-    example text 08000000: EA000108  b $08000428
-      R00: 08000000  R01: 000000EA  R02: 00000000  R03: 00000000
-    example text 08000428: E3A00012  mov r0, 0x12
-      R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000
-    example text 0800042C: E129F000  msr cpsr_fc, r0
-      R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000
-    ```
-    - `{addr}`, `{instr}`, `{asm}`, `{r0-r16}`, and `{cpsr}` are preset values that you can use
-    - you can also interpolate user expressions using curly braces
-        - interpolated values may optionally have a format specified with the following syntax: `{expression:format}`  
-          Formats are in accordance with the 
-          [Python Format Specification Mini-Language](https://docs.python.org/3/library/string.html#formatspec)  
-    - since the length of `{asm}` varies, I added an option to set its length with the syntax: `{asm:length}`
-    - for rlists, instead of the `{name:format}` syntax, you may use `{name:separator:format}`
-        - `separator` refers to the ascii characters printed between each register in the rlist
-    - You may also use any of the following presets (default is "line"):
-        - `line` = `{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}`
-        - `block` = `{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}`
-        - `linexl` = `{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15:\t}`
-        - `blockxl` = `{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}`
+- `format: [formatstr]` - set the format of data sent to the output file; see [Formats](#formats)
+
+## Formats
+
+Data sent to output.txt after each instruction may be formatted however you like.  You can choose what data to display, including data from memory, user expressions, global variables, or any of the preset values: `{addr}`, `{instr}`, `{asm}`, `{r0-r16}`, and `{cpsr}`
+
+```
+> output True
+> format: example text {addr}: {instr}  {asm}\n  {r0-r3}
+> c 3
+```
+Result in output.txt:
+```
+example text 08000000: EA000108  b $08000428
+  R00: 08000000  R01: 000000EA  R02: 00000000  R03: 00000000
+example text 08000428: E3A00012  mov r0, 0x12
+  R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000
+example text 0800042C: E129F000  msr cpsr_fc, r0
+  R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000
+```
+interpolated values may optionally have a format specified with the following syntax: `{expression:format}`  
+- Formats are in accordance with the 
+  [Python Format Specification Mini-Language](https://docs.python.org/3/library/string.html#formatspec)  
+- since the length of `{asm}` varies, I added an option to set its length with the syntax: `{asm:length}`
+- for rlists, instead of the `{name:format}` syntax, you may use `{name:separator:format}`
+    - `separator` refers to the ascii characters printed between each register in the rlist
+- You may also use any of the following presets (default is "line"):
+    - `line` = `{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}`
+    - `block` = `{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}`
+    - `linexl` = `{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15:\t}`
+    - `blockxl` = `{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}`
 ```
 > output true
 > format: line
