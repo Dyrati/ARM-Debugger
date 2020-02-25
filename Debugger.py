@@ -26,8 +26,8 @@ OUTPUTFILE = "output.txt"
 FormatPresets = {
     "line": r"{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}",
     "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}",
-    "linexl": r"{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15}",
-    "blockxl": r"{addr}:\t{instr}\t{asm:20}\t\t{cpsr}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}"}
+    "linexl": r"{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15:\t}",
+    "blockxl": r"{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}"}
 OutputHandle = None
 OutputCondition = False
 FileLimit = 10*2**20
@@ -253,11 +253,10 @@ def formatstr(expstring):
         form = ":" + m[1] if len(m) > 1 else ""
         if re.search(r"\br\d+", m[0]):  # handles rlists
             rlist = rlist_to_int(m[0])
-            if not form: form = ":0>8X"
-            exp = ""
-            for j in range(16):
-                if rlist & 2**j: exp += f"R{j:0>2}: {{REG[{j}]{form}}}  "
-            return exp[:-2]
+            separator = m[1] if len(m) > 1 else "  "
+            form = m[2] if len(m) > 2 else "0>8X"
+            exp = [f"R{i:0>2}: {{REG[{i}]:{form}}}" for i in range(16) if rlist & 2**i]
+            return separator.join(exp)
         elif m[0] in {"addr", "ADDR"}: return f"{{ADDR{form if form else ':0>8X'}}}"
         elif m[0] in {"instr", "INSTR"}: return f"{{INSTR{form if form else ':0>8X'}}}"
         elif m[0] in {"asm", "ASM"}: 
@@ -326,7 +325,7 @@ def com_d(*args):
 def com_dw(*args): WatchPoints.remove(expeval("".join(args)))
 def com_dr(*args): ReadPoints.remove(expeval("".join(args)))
 def com_dc(*args): Conditionals.pop(expeval("".join(args)))
-def com_i(): 
+def com_i():
     showreg()
     print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
 def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
@@ -343,7 +342,7 @@ def com_repeat(*args):
     Commandque.extend([args, int(count)])
 def com_def(defstring):
     name, args = re.match(r"def\s+(.+?)\s*:\s*(.+)", defstring).groups()
-    UserFuncs[name] = list(map(lambda x: x.strip(), args.split(";")))
+    UserFuncs[name] = [s.strip() for s in args.split(";")]
 def com_save(identifier="PRIORSTATE"): LocalSaves[identifier] = RAM.copy(), REG.copy()
 def com_load(identifier="PRIORSTATE"): 
     RAM[:] = LocalSaves[identifier][0].copy()
@@ -382,7 +381,7 @@ def com_output(condition):
         else: OutputCondition = condition
 def com_format(command): 
     global OutputFormat
-    OutputFormat = formatstr(re.match(r"format\s*:\s*(.*)", command).group(1))
+    OutputFormat = formatstr(re.match(r"format\s*:?\s*(.*)", command).group(1))
 def com_cls(): os.system("cls")
 def com_help(): print(helptext[1:-1])
 def com_quit(): sys.exit()
@@ -394,6 +393,10 @@ commands = {
     "def":com_def, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, 
     "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, 
     "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit}
+
+for func in commands.values(): 
+    try: del globals()[func.__name__]
+    except KeyError: pass
 
 
 Show = True
@@ -415,9 +418,8 @@ while True:
             if not Commandque and expeval(OutputCondition): OutputHandle.flush()
             command = Commandque.pop() if Commandque else input(ProgramMode + " ")
             if type(command) is int:
-                if command > 0: Commandque.extend([command-1, Commandque[-1]])
-                else: Commandque.pop()
-                continue
+                if command > 0: Commandque.append(command-1); command = Commandque[-2]
+                else: Commandque.pop(); continue
             elif type(command) is tuple:
                 if expeval(command[0]): Commandque.append(command); command = command[1]
                 else: continue
@@ -433,7 +435,7 @@ while True:
                 try: print(eval(command))
                 except SyntaxError: exec(command)
                 continue
-            name, args = re.match(r"([^ :]+)\s*:?(.*)", command).groups()
+            name, args = re.match(r"([^ :]+)\s*:?\s*(.*)", command).groups()
             if name in {"def", "format"}: commands[name](command); continue
             elif ";" in command: Commandque.extend(reversed(command.split(";"))); continue
             elif "\\" in command and name not in {"importrom", "importstate", "exportstate", "if", "rep", "repeat", "while"}:
@@ -442,7 +444,7 @@ while True:
             if matchfunc and matchfunc.group(1) in UserFuncs:
                 Commandque.extend(reversed(UserFuncs[matchfunc.group(1)])); continue
             try: 
-                if args: commands[name](*args.strip().split(" "))
+                if args: commands[name](*args.split(" "))
                 else: commands[name]()
             except (KeyError, SyntaxError, TypeError):
                 if not assign(command):
