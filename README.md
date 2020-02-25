@@ -51,7 +51,7 @@ Default variables are **r0-r16, sp, lr, pc,** and **m(*addr*, *size*)**.  (size=
 There are also 4 global variables that may be accessed, but not directly modified:
 - `MODE` - 0 if in ARM mode, 1 if in THUMB mode 
 - `ADDR` - The current address
-- `INSTR` - The next instruction (in hex) to be executed
+- `INSTR` - The next machine code instruction to be executed
 - `CPUCOUNT` - The total number of CPU instructions executed since the beginning of the session
 
 Attempts to modify these (or any other) global variables will instead create a User Variable with the same name.  
@@ -175,6 +175,7 @@ If viewing in Excel, try out `linexl` and `blockxl`.
 ## Alternate Debugger Modes
 In addition to Normal Mode, there is Assembly Mode and Execution Mode. 
 These Modes are indicated by the input prompt.
+You can freely switch between these modes, including as part of function calls and loops.
 
 ### Assembly Mode
 To enter Assembly Mode, type: `@` or `asm`.  
@@ -206,7 +207,14 @@ CPSR: [----T] 0000003F
 ### Execution Mode
 To enter Execution Mode, type: `$` or `exec`.  
 In this mode, you can type in real Python code, which is executed immediately.  
-Here you have unrestrained access to all the global functions and variables of the script.
+User Expressions do not work in this mode.  The commands must be valid Python.
+Here you have unrestrained access to all the global functions and variables of the script.  
+Some useful commands in this mode include:
+- `dir()` - displays all the global variable identifiers
+- `UserVars, UserFuncs` - the user variables and user functions
+- `OutputFormat` - shows how the current output format string was interpreted
+- `CPUCOUNT` - tracking the cpucount helps a lot with troubleshooting; it can be modified in this mode
+- `os, sys, traceback` - python modules
 
-
-**To reenter Normal Mode, type: `>` or `debug`.**
+### Normal Mode
+The default mode.  To reenter Normal Mode, type: `>` or `debug`.
