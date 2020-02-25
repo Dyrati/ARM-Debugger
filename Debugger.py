@@ -436,7 +436,7 @@ while True:
             name, args = re.match(r"([^ :]+)\s*:?(.*)", command).groups()
             if name in {"def", "format"}: commands[name](command); continue
             elif ";" in command: Commandque.extend(reversed(command.split(";"))); continue
-            elif "\\" in command and name not in {"if", "rep", "repeat", "while"}:
+            elif "\\" in command and name not in {"importrom", "importstate", "exportstate", "if", "rep", "repeat", "while"}:
                 Commandque.extend(reversed(command.split("\\"))); continue
             matchfunc = re.match(r"(\w*)\s?\(.*\)", command)
             if matchfunc and matchfunc.group(1) in UserFuncs:
