@@ -139,11 +139,11 @@ The commands may be anything, including function calls, loops, and even [Debugge
     - after each CPU instruction, if *condition* is True, the debugger will write data to "output.txt"
     - the data outputted may be customized using the `format` command
     - if *condition* is "clear", deletes all of the data in "output.txt"
-- `format [formatstr]` - set the format of data sent to the output file
+- `format: [formatstr]` - set the format of data sent to the output file
     - *formatstr* may be a string literal; data may be interpolated using curly braces
     ```
     > output True
-    > format example text {addr}: {instr}  {asm}\n  {r0-r3}
+    > format: example text {addr}: {instr}  {asm}\n  {r0-r3}
     > c 3
     ```
     Result in output.txt:
@@ -166,7 +166,7 @@ The commands may be anything, including function calls, loops, and even [Debugge
         - `blockxl` = `{addr}:\t{instr}\t{asm:20}\t\t{cpsr}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}`
 ```
 > output true
-> format line
+> format: line
 > c 5
 ```
 Result in output.txt:
