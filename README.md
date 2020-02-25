@@ -155,15 +155,19 @@ The commands may be anything, including function calls, loops, and even [Debugge
     example text 0800042C: E129F000  msr cpsr_fc, r0
       R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000
     ```
-    - {addr}, {instr}, {asm}, {r0-r16}, and {cpsr} have preset formats that you can utilize in these format strings
-    - you can also interpolate user variables and expressions, which may be formatted in accordance with the  
-      [Python Format Specification Mini-Language](https://docs.python.org/3/library/string.html#formatspec)
-    - since the length of {asm} varies, I added an option to set its length: `{asm:length}`
+    - `{addr}`, `{instr}`, `{asm}`, `{r0-r16}`, and `{cpsr}` are preset values that you can use
+    - you can also interpolate user expressions using curly braces
+        - interpolated values may optionally have a format specified with the following syntax: `{expression:format}`  
+          Formats are in accordance with the 
+          [Python Format Specification Mini-Language](https://docs.python.org/3/library/string.html#formatspec)  
+    - since the length of `{asm}` varies, I added an option to set its length with the syntax: `{asm:length}`
+    - for rlists, instead of the `{name:format}` syntax, you may use `{name:separator:format}`
+        - `separator` refers to the ascii characters printed between each register in the rlist
     - You may also use any of the following presets (default is "line"):
         - `line` = `{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}`
         - `block` = `{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}`
-        - `linexl` = `{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15}`
-        - `blockxl` = `{addr}:\t{instr}\t{asm:20}\t\t{cpsr}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}`
+        - `linexl` = `{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15:\t}`
+        - `blockxl` = `{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}`
 ```
 > output true
 > format: line
@@ -171,11 +175,39 @@ The commands may be anything, including function calls, loops, and even [Debugge
 ```
 Result in output.txt:
 ```
-08000000: EA000108  b $8000428            CPSR: [-ZC--]  R00: 08000000  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007f00  R14: 00000000  R15: 0800042c
-08000428: E3A00012  mov r0, 0x12          CPSR: [-ZC--]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007f00  R14: 00000000  R15: 08000430
-0800042C: E129F000  msr cpsr_fc, r0       CPSR: [-----]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007f00  R14: 00000000  R15: 08000434
-08000430: E59FD028  ldr sp, [pc, 0x28]    CPSR: [-----]  R00: 00000012  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007fa0  R14: 00000000  R15: 08000438
-08000434: E3A0001F  mov r0, 0x1f          CPSR: [-----]  R00: 0000001f  R01: 000000ea  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007fa0  R14: 00000000  R15: 0800043c
+08000000: EA000108  b $08000428           CPSR: [-ZC--]  R00: 08000000  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 0800042C
+08000428: E3A00012  mov r0, 0x12          CPSR: [-ZC--]  R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 08000430
+0800042C: E129F000  msr cpsr_fc, r0       CPSR: [-----]  R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 08000434
+08000430: E59FD028  ldr sp, [$08000460]   CPSR: [-----]  R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007FA0  R14: 00000000  R15: 08000438
+08000434: E3A0001F  mov r0, 0x1f          CPSR: [-----]  R00: 0000001F  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007FA0  R14: 00000000  R15: 0800043C
+```
+```
+> output clear
+> format: block
+> c 3
+```
+Result in output.txt:
+```
+08000438: E129F000  msr cpsr_fc, r0
+  R00: 0000001F  R01: 000000EA  R02: 00000000  R03: 00000000
+  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000
+  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000
+  R12: 00000000  R13: 03007FA0  R14: 00000000  R15: 08000440
+  CPSR: [-----]
+
+0800043C: E59FD018  ldr sp, [$0800045C] (=$03007F00)
+  R00: 0000001F  R01: 000000EA  R02: 00000000  R03: 00000000
+  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000
+  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000
+  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 08000444
+  CPSR: [-----]
+
+08000440: E59F101C  ldr r1, [$08000464] (=$03007FFC)
+  R00: 0000001F  R01: 03007FFC  R02: 00000000  R03: 00000000
+  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000
+  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000
+  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 08000448
+  CPSR: [-----]
 ```
 If viewing in Notepad, uncheck Word Wrap to make it look nicer.  
 If viewing in Excel, try out `linexl` and `blockxl`.
