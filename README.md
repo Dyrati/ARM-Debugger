@@ -1,5 +1,5 @@
 # ARM Debugger
-An easy to use, powerful debugger.  Import a rom, and an sgm file, and set breakpoints, watchpoints, and readpoints, view/modify registers and memory, output results to a txt file, disassemble the code, and more!
+An easy to use, powerful debugger.  You can import a rom, and an sgm file, and set breakpoints, watchpoints, and readpoints, view/modify registers and memory, output results to a txt file, disassemble the code, and more!
 
 
 ## Set Up
@@ -34,8 +34,8 @@ That's pretty much all you need to get started.  The rest of this readme is just
 - `dr [addr]` - delete a readpoint
 - `dc [index]` - delete a conditional breakpoint by index number
 - `i` - print the CPU registers
-- `dist [addr] (*count*)` - display *count* THUMB instructions starting from *addr*
-- `disa [addr] (*count*)` - display *count* ARM instructions starting from *addr*
+- `dist [addr] (count)` - display *count* THUMB instructions starting from *addr*
+- `disa [addr] (count)` - display *count* ARM instructions starting from *addr*
 - `m [addr] (count) (size)` - display *count* units of *size* bytes of memory at *addr* (count=1, size=4 by default)
 
 Enter in nothing to execute the previous command.  
