@@ -107,10 +107,8 @@ if STATEPATH: importstate(STATEPATH)
 
 
 helptext = """
+
     [...]  Required arguments;  (...)  Optional arguments
-    Any arguments may be replaced with User Expressions. Expressions may include any user defined variables,
-    and/or "sp","lr","pc", "r0-r16", "m(addr,size)", and/or any mathematical operations between them.
-    If the command takes multiple arguments, the expression must not contain spaces.
 
     Commands                        Effect
                                     (nothing) repeat the previous command
@@ -141,6 +139,9 @@ helptext = """
                                         commands may be ANY valid debugger commands
                                         execute these functions later by typing in "name()"
                                         you can call functions within functions, with unlimited nesting
+
+    tree [addr] (depth)             prints a tree of functions based on what functions are called in Thumb mode
+
     save (name)                     create a local save; name = PRIORSTATE by default
     load (name)                     load a local save; name = PRIORSTATE by default
     dv [name]                       delete user variable
@@ -157,9 +158,9 @@ helptext = """
     reset                           reset the emulator (clears the RAM and resets registers)
     output [condition]              when *condition* is True, outputs to "output.txt"; (after each instruction)
                                         if *condition* is "clear", deletes all the data in "output.txt"
-    format [formatstr]              set the format of data sent to the output file
+    format [formatstr]              set the format of data sent to the output file (more details in the ReadMe)
                                         Interpolate expressions by enclosing them in curly braces
-                                        presets: line / block / linexl / blockxl  (xl suffix for Excel formatting)
+                                        presets: line / block / linexl / blockxl
     cls                             clear the console
     ?/help                          print the help text
     quit/exit                       exit the program
@@ -170,6 +171,13 @@ helptext = """
     $/exec                          switch to Execution Mode
                                         In this mode, you may type in valid Python code to execute.
     >/debug                         switch to Debug Mode (the default mode)
+
+
+    Any arguments may be replaced with User Expressions. Expressions may include any user defined variables,
+    and/or "sp","lr","pc", "r0-r16", "m(addr,size)", and/or any mathematical operations between them.
+    If the command takes multiple arguments, the expression must not contain spaces.
+
+    If you ever get stuck in an infinite loop, press ctrl + C to escape it.
 """
 
 
