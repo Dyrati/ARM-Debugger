@@ -2,7 +2,7 @@ import re
 from bisect import bisect_right
 
 
-RAM,ROM = bytearray(), bytearray()
+RAM, ROM = bytearray(), bytearray()
 RegionMarkers = {}
 suffixes = ["eq","ne","cs","cc","mi","pl","vs","vc","hi","ls","ge","lt","gt","le","","nv"]
 
