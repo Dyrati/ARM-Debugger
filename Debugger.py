@@ -6,7 +6,7 @@ from Components.Disassembler import disasm
 from Components.Assembler import assemble
 from Components.FunctionFlow import generateFuncList
 
-VERSION_INFO = "Last Updated March 3rd, 2020"
+VERSION_INFO = "Last Updated March 20, 2020"
 print(f"VERSION INFO: {VERSION_INFO}")
 
 
