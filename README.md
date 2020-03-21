@@ -141,20 +141,21 @@ The commands may be anything, including function calls, loops, and even [Debugge
     - will overwrite the destination, back up your saves!
 - `reset` - reset the emulator (clears the RAM and resets the registers)
 - `output [condition]`
-    - after each CPU instruction, if *condition* is True, the debugger will write data to "output.txt"
-    - if *condition* is "clear", deletes all of the data in "output.txt"
+    - after each CPU instruction, if *condition* is True, the debugger will write data to "Debugger_Output.txt"
+    - if *condition* is "clear", deletes all of the data in "Debugger_Output.txt"
+    - if *condition* is "terminal", binds the terminal to "Debugger_Terminal.txt"
 - `format: [formatstr]` - set the format of data sent to the output file; see [Formats](#formats)
 
 ## Formats
 
-Data sent to output.txt after each instruction may be formatted however you like.  You can choose what data to display, including data from memory, user expressions, global variables, or any of the preset values: `{addr}`, `{instr}`, `{asm}`, `{r0-r16}`, and `{cpsr}`
+Data sent to Debugger_Output.txt after each instruction may be formatted however you like.  You can choose what data to display, including data from memory, user expressions, global variables, or any of the preset values: `{addr}`, `{instr}`, `{asm}`, `{r0-r16}`, and `{cpsr}`
 
 ```
 > output True
 > format: example text {addr}: {instr}  {asm}\n  {r0-r3}
 > c 3
 ```
-Result in output.txt:
+Result in Debugger_Output.txt:
 ```
 example text 08000000: EA000108  b $08000428
   R00: 08000000  R01: 000000EA  R02: 00000000  R03: 00000000
@@ -173,14 +174,14 @@ example text 0800042C: E129F000  msr cpsr_fc, r0
 - You may also use any of the following presets (default is "line"):
     - `line` = `{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}`
     - `block` = `{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr}`
-    - `linexl` = `{addr}:\t{instr}\t{asm:20}\t{cpsr}\t{r0-r15:\t}`
-    - `blockxl` = `{addr}:\t{instr}\t{asm}\t\t{cpsr}\n\t{r0-r3:\t}\n\t{r4-r7:\t}\n\t{r8-r11:\t}\n\t{r12-r15:\t}\n\t{cpsr}`
+    - `linexl` = `{addr}:,{instr},"{asm:20}",{cpsr},{r0-r15:,}`
+    - `blockxl` = `{addr}:,{instr},"{asm}"\n,{r0-r3:,}\n,{r4-r7:,}\n,{r8-r11:,}\n,{r12-r15:,}\n,{cpsr},{REG[16]:0>8X}\n`
 ```
 > output true
 > format: line
 > c 5
 ```
-Result in output.txt:
+Result in Debugger_Output.txt:
 ```
 08000000: EA000108  b $08000428           CPSR: [-ZC--]  R00: 08000000  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 0800042C
 08000428: E3A00012  mov r0, 0x12          CPSR: [-ZC--]  R00: 00000012  R01: 000000EA  R02: 00000000  R03: 00000000  R04: 00000000  R05: 00000000  R06: 00000000  R07: 00000000  R08: 00000000  R09: 00000000  R10: 00000000  R11: 00000000  R12: 00000000  R13: 03007F00  R14: 00000000  R15: 08000430
@@ -193,7 +194,7 @@ Result in output.txt:
 > format: block
 > c 3
 ```
-Result in output.txt:
+Result in Debugger_Output.txt:
 ```
 08000438: E129F000  msr cpsr_fc, r0
   R00: 0000001F  R01: 000000EA  R02: 00000000  R03: 00000000
@@ -217,7 +218,7 @@ Result in output.txt:
   CPSR: [-----]
 ```
 If viewing in Notepad, uncheck Word Wrap to make it look nicer.  
-If viewing in Excel, try out `linexl` and `blockxl`.
+If viewing in Excel, try out `linexl` and `blockxl`, and change the file extension to `.csv`.
 
 ## Alternate Debugger Modes
 In addition to Normal Mode, there is Assembly Mode and Execution Mode. 
@@ -237,8 +238,7 @@ R08: 1E220000 R09: 080EE354 R10: 02030194 R11: 02030000
 R12: 080C9F63 R13: 03007E2C R14: 080CA095 R15: 0801487C
 CPSR: [----T] 0000003F
 0801487A: 4B07      ldr r3, [$08014898] (=$41C64E6D)
-```
-```
+
 # switch to Assembly Mode and branch to $08014878
 
 > @
