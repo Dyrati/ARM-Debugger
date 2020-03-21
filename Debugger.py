@@ -156,8 +156,9 @@ helptext = """
     exportstate (filepath)          save the current state to a file; filepath = (most recent import) by default
                                         will overwrite the destination, back up your saves!
     reset                           reset the emulator (clears the RAM and resets registers)
-    output [condition]              when *condition* is True, outputs to "output.txt"; (after each instruction)
-                                        if *condition* is "clear", deletes all the data in "output.txt"
+    output [condition]              when *condition* is True, outputs to "Debugger_Output.txt"; (after each instruction)
+                                        if *condition* is "clear", deletes all the data in "Debugger_Output.txt"
+                                        if *condition* is "terminal", binds the terminal to "Debugger_Terminal.txt"
     format [formatstr]              set the format of data sent to the output file (more details in the ReadMe)
                                         Interpolate expressions by enclosing them in curly braces
                                         presets: line / block / linexl / blockxl
@@ -418,7 +419,7 @@ def com_exportstate(filepath=''):
     if filepath == '': filepath = STATEPATH
     for i in range(17): RAM[24+4*i : 28+4*i] = int.to_bytes(REG[i], 4, "little")
     with gzip.open(filepath,"wb") as f: f.write(RAM)
-    print("State saved successfully")
+    print("State saved to " + filepath)
 def com_output(condition):
     global OutputHandle, OutputCondition, TerminalHandle, print
     if condition.lower() in {"close", "false", "none"}: 
