@@ -7,8 +7,7 @@ Make sure you have Python installed, and download the repository.  You can then 
 From there, you can type in `help` or `?` to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
-To execute CPU instructions, you'll need to import a rom.  You can use the command `importrom [filepath]`.  You can upload savestate files in .sgm format using `importstate [filepath]`.  At any time, you may create a local save only available to the current session, using `save (identifier)` (identifier is PRIORSTATE by default), which can be loaded using `load (identifier)`.
-
+To execute ROM instructions, you'll need to import a ROM.  You can use the command `importrom [filepath]`.  You can upload savestate files that are in .sgm format using `importstate [filepath]`.
 ```
 > importrom C:\Users\GenericName\Games\Roms\romname.gba
 > importstate C:\Users\GenericName\Games\Saves\statename.sgm
@@ -16,6 +15,9 @@ To execute CPU instructions, you'll need to import a rom.  You can use the comma
 # works with or without quotation marks, regardless of spaces in the path name, 
 # so clicking and dragging a file to the command window will work after typing importrom/importstate
 ```
+Settings may be changed in the `Settings.txt` file.  You can change the default output files, output formats, the file size limit, or the initial registers.  You can also write debugger commands to execute whenever the program starts up.
+
+If you ever get stuck in an infinite loop, press `ctrl + c` to escape it.
 
 That's pretty much all you need to get started.  The rest of this readme is just here to explain some features.
 
@@ -95,6 +97,7 @@ If the command takes multiple arguments, then each expression must not contain s
     - bind a list of commands separated by semicolons to *name*
     - execute these functions later by typing in "*name*()"
     - you can call functions within functions, with unlimited nesting
+- `tree [addr] (depth)` - prints a tree of functions based on what functions are called in Thumb mode
 - `save (name)` - create a local save; *name* = PRIORSTATE by default
 - `load (name)` - load a local save; *name* = PRIORSTATE by default
 - `dv [name]` - delete user variable
@@ -106,7 +109,8 @@ If the command takes multiple arguments, then each expression must not contain s
 
 **You can write multiple commands in a single line by separating them with `;`**  
 **You can use multiple-command if/while/repeat instructions by separating each inner command with `\`**  
-(using a semicolon will end the if/while/repeat instruction)
+(using a semicolon will end the if/while/repeat instruction)  
+The commands may be anything, including function calls, loops, and even [Debugger Mode Swaps](#alternate-debugger-modes).
 ```
 > wram = $02000000; m wram 32 1
 02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
@@ -121,10 +125,9 @@ If the command takes multiple arguments, then each expression must not contain s
 02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
 > funcs
 {'clear': iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 \ iter += 1}
-```
+```  
 
-The commands may be anything, including function calls, loops, and even [Debugger Mode Swaps](#alternate-debugger-modes).  
-
+### Local Saves
 `save` and `load` only apply to local saves.  Local saves are temporarily stored in the current session.  They can be given names and loaded with those names at any time.  To overwrite an actual savestate file, use `exportstate`.  
 
 
@@ -245,6 +248,8 @@ R08: 1E220000 R09: 080EE354 R10: 02030194 R11: 02030000
 R12: 080C9F63 R13: 03007E2C R14: 080CA095 R15: 0801487A
 CPSR: [----T] 0000003F
 ```
+You can disable the automatic display of registers in `Settings.txt`
+
 
 ### Execution Mode
 To enter Execution Mode, type: `$` or `exec`.  
@@ -259,4 +264,4 @@ Some useful commands in this mode include:
 - `os, sys, traceback` - python modules
 
 ### Normal Mode
-The default mode.  To reenter Normal Mode, type: `>` or `debug`.
+Normal mode is the default mode.  To reenter Normal Mode, type: `>` or `debug`.
