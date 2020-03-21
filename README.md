@@ -17,7 +17,7 @@ State loaded successfully
 # works with or without quotation marks, regardless of spaces in the path name, 
 # so clicking and dragging a file to the command window will work after typing importrom/importstate
 ```
-Settings may be changed in the `Settings.txt` file.  You can change the default output files, output formats, the file size limit, or the initial registers.  You can also write debugger commands to execute whenever the program starts up.
+Settings may be changed in the `Debugger_Settings.txt` file.  You can change the default output files, output formats, the file size limit, or the initial registers.  You can also write debugger commands to execute whenever the program starts up.
 
 If you ever get stuck in an infinite loop, press `ctrl + c` to escape it.
 
