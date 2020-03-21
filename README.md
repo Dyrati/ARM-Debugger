@@ -10,7 +10,9 @@ You can also start Debugger.py from the command line with two optional arguments
 To execute ROM instructions, you'll need to import a ROM.  You can use the command `importrom [filepath]`.  You can upload savestate files that are in .sgm format using `importstate [filepath]`.
 ```
 > importrom C:\Users\GenericName\Games\Roms\romname.gba
+ROM loaded successfully
 > importstate C:\Users\GenericName\Games\Saves\statename.sgm
+State loaded successfully
 
 # works with or without quotation marks, regardless of spaces in the path name, 
 # so clicking and dragging a file to the command window will work after typing importrom/importstate
