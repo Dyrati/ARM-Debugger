@@ -7,6 +7,9 @@ Make sure you have Python installed, and download the repository.  You can then 
 From there, you can type in `help` or `?` to get detailed info on the available commands.
 You can also start Debugger.py from the command line with two optional arguments: `[filepath to rom] [filepath to savestate]`
 
+Don't have Python? Download the exe **and** settings file here:  
+https://drive.google.com/open?id=12rcQcuH55hC64-DNFB7QGVVT5y6R6HHs
+
 To execute ROM instructions, you'll need to import a ROM.  You can use the command `importrom [filepath]`.  You can upload savestate files that are in .sgm format using `importstate [filepath]`.
 ```
 > importrom C:\Users\GenericName\Games\Roms\romname.gba
