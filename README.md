@@ -44,8 +44,11 @@ That's pretty much all you need to get started.  The rest of this readme is just
 - `dist [addr] (count)` - display *count* THUMB instructions starting from *addr*
 - `disa [addr] (count)` - display *count* ARM instructions starting from *addr*
 - `m [addr] (count) (size)` - display *count* units of *size* bytes of memory at *addr* (count=1, size=4 by default)
+- `asm (addr): (command)` - assemble a command written in Thumb
+    - if *addr* is included, you can utilize absolute address references, like `bl $08014878` or `ldr r0, [$08014894]`
+    - if *command* is omitted, it enters multiline mode, allowing you to paste multiple commands
 
-Enter in nothing to execute the previous command.  
+**Enter in nothing to execute the previous command.**  
 
 Arguments are separated by spaces.  Arguments in brackets `[...]` are required, and parentheses `(...)` are optional.  
 All commands accept [*expressions*](#expressions) as arguments, however if the command accepts multiple arguments, the expressions must not contain spaces.
@@ -145,8 +148,8 @@ The commands may be anything, including function calls, loops, and even [Debugge
 - `reset` - reset the emulator (clears the RAM and resets the registers)
 - `output [condition]`
     - after each CPU instruction, if *condition* is True, the debugger will write data to "Debugger_Output.txt"
-    - if *condition* is "clear", deletes all of the data in "Debugger_Output.txt"
-    - if *condition* is "terminal", binds the terminal to "Debugger_Terminal.txt"
+    - if *condition* is **clear**, deletes all of the data in "Debugger_Output.txt"
+    - if *condition* is **terminal**, binds the terminal to "Debugger_Terminal.txt"; repeat this command to unbind it
 - `format: [formatstr]` - set the format of data sent to the output file; see [Formats](#formats)
 
 ## Formats
