@@ -60,7 +60,7 @@ try:
 except FileNotFoundError: pass
 
 Matchfunc = re.compile(r"(\w*)\(\)")  # user and global functions
-Matchassign = re.compile(r"(?<![!=<>])(?:\+|-|\*|/|//|<<|>>|\*\*)?=")  # assignment of values
+Matchassign = re.compile(r"(?<![!=<>])(?:\+|-|\*|/|//|<<|>>|\*\*)?=(?!=)")  # assignment of values
 Matchargs = re.compile(r"([^ :(]+)[ :]*(.*)")  # grabs the debugger command and its arguments
 
 
