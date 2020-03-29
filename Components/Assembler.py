@@ -36,11 +36,12 @@ commands = {
     "strh":[(7,"A[1]"), (7<<3,"A[2][0]"), ("T[2][1] is int",4),
         (0xFF00,0x52), (7<<6,"A[2][1]"), -1,
         (0xFF00,0x80), (31<<6,"A[2][1]//2")],
-    "ldr":[("A[2][0]==15",15), ("A[2][0]==13",10), (7,"A[1]"), (7<<3,"A[2][0]"), ("T[2][1] is int",4),
+    "ldr":[("T[2][0] is int",20), ("A[2][0]==15",15), ("A[2][0]==13",10), (7,"A[1]"), (7<<3,"A[2][0]"), ("T[2][1] is int",4),
         (0xFF00,0x58), (7<<6,"A[2][1]"), -1,
         (0xFF00,0x68), (31<<6,"A[2][1]//4"), -1,
         (0xFF00,0x98), (7<<8,"A[1]"), (0xFF,"A[2][1]//4"), -1,
-        (0xFF00,0x48), (7<<8,"A[1]"), (0xFF,"A[2][1]//4")],
+        (0xFF00,0x48), (7<<8,"A[1]"), (0xFF,"A[2][1]//4"), -1,
+        (0xFF00,0x48), (7<<8,"A[1]"), (0xFF,"(A[2][0]-(pc & ~2))//4")],
     "ldrb":[(7,"A[1]"), (7<<3,"A[2][0]"), ("T[2][1] is int",4),
         (0xFF00,0x5c), (7<<6,"A[2][1]"), -1,
         (0xFF00,0x78), (31<<6,"A[2][1]")],
@@ -64,20 +65,22 @@ commands = {
 }
 
 
-def extract(instr):    
-    args = []
-    groups = []
+def extract(instr):  # Extracts and returns the arguments and argument types of the user input
+
+    name, instr = re.match(r"(\S*)\s*(.*)", instr).groups()
+    args = [(name, str)]  # output
+    groups = []  # used to contain things within brackets
     reglist = 0
     des = args
 
-    replacements = {"sp":"r13", "lr":"r14", "pc":"r15", "\$":"0x", "#":"", r"\bx":"0x"}
-    for k,v in replacements.items(): instr = re.sub(k,v,instr)
-    separator = re.compile("[^, ]+")
+    replacements = {" ":"", "sp":"r13", "lr":"r14", "pc":"r15", "$":"0x", "#":""}
+    for k,v in replacements.items(): instr = instr.replace(k,v)
+    instr = re.sub(r"\bx", "0x", instr)
     brackets = re.compile("\[?{?(\w*)\]?}?")
-    clist = separator.findall(instr)
-    args.append((clist[0],str))
+    clist = instr.split(",")
+    if not clist[0]: clist = []
 
-    for string in clist[1:]: 
+    for string in clist: 
         value = brackets.sub(r"\1",string)
         if string[0] == "[": des = groups
         elif string[0] == "{": des = reglist
@@ -86,7 +89,8 @@ def extract(instr):
                 value = value.replace("r","").split("-")
                 if len(value) == 1: reglist |= 2**int(value[0])
                 else: reglist |= 2**(int(value[1])+1)-2**int(value[0])
-        elif value[0] == "r": des.append((int(value.replace("!","")[1:]),str))
+        elif value[0] == "r": 
+            des.append((int(value.replace("!","")[1:]),str))
         else: 
             try: des.append((int(value),int))
             except ValueError: des.append((int(value,16),int))
@@ -102,11 +106,12 @@ def extract(instr):
     return zip(*args)
 
 
-def assemble(instr, pc=4):
+def assemble(instr, pc=None):
     out = 0
     index = 0
     A,T = extract(instr)
     template = commands["initial"]
+    if pc == None: pc = 4
 
     def setval(bitmask,value):
         nonlocal out
@@ -137,4 +142,3 @@ def assemble(instr, pc=4):
             elif t2 is tuple: setval(c1,c2.index(A[0]))
         index += 1
     return out
-

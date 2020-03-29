@@ -37,21 +37,20 @@ def mem_read(addr,size=4,signed=False):
 def mem_write(addr,data,size=4):
     region = addr >> 24 & 0xF
     if region not in RegionMarkers: return 0
-    try: data = int.to_bytes(data % 2**(8*size),size,"little")
-    except TypeError: size = len(data)
+    if type(data) is int: data = int.to_bytes(data % 2**(8*size),size,"little")
+    else: size = len(data)
     if addr in WatchPoints and Executing:
         global BreakState
         old, new = mem_read(addr,size), int.from_bytes(data, "little")
         BreakState = f"WatchPoint: {addr:0>8X} ({old:0>{2*size}X} -> {new:0>{2*size}X})"
-    try:
+    if region in RegionMarkers:
         base, length = RegionMarkers[region]
         reladdr = (addr & 0xFFFFFF) % length + base
         RAM[reladdr:reladdr+size] = data
-    except KeyError:
-        if region >= 8:
-            reladdr = addr - 0x08000000
-            ROM[reladdr:reladdr+size] = data
-    if mem_read(0x040000DF,1) & 2**7: DMA()
+    elif region >= 8:
+        reladdr = addr - 0x08000000
+        ROM[reladdr:reladdr+size] = data
+    if RAM[RegionMarkers[4][0] + 0xDF] & 2**7: DMA()
 
 
 def mem_copy(src,des,size):
@@ -104,8 +103,7 @@ def cmphalf(result,S=1):
 
 def barrelshift(value,Shift,Typ,S=0):
     value &= 0xFFFFFFFF
-    if Typ == 3: Shift &= 31
-    else: Shift = min(32,Shift)
+    Shift &= 31
     affectedflags = 0xE << 28
     if Shift: 
         C = 2*min(1, value & 1 << Shift-1)

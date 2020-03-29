@@ -87,14 +87,14 @@ ThumbDisasmTree = {
     12:[(("push","pop"),1<<11), " {", ["rlist({0}|{1}<<{2}+14)", 255, 1<<8, 1<<11], "}"],
     13:[(8,2), ("bkpt ${0:x}",255)],
     14:[(("stmia","ldmia"),1<<11), (" r{0}!, ",7<<8), "{", ["rlist({0})",255], "}"],
-    15:["b", ["suffixes[{0}]",15<<8], " $", ["(pc if pc != None else 4) + 2*(({0}^2**7)-2**7)",255,"0>8x"]],
+    15:["b", ["suffixes[{0}]",15<<8], " $", ["(pc if pc is not None else 4) + 2*(({0}^2**7)-2**7)",255,"addr"]],
     16:[],
     17:[("swi ${0:x}",255)],
-    18:["b $",["(pc if pc != None else 4) + 2*(({0}^2**10) - 2**10)",0x7FF,"0>8x"]],
+    18:["b $",["(pc if pc is not None else 4) + 2*(({0}^2**10) - 2**10)",0x7FF,"addr"]],
     19:[],
     20:[],
     21:["bl", ([0x7FF,0],-1), "h $", ["2*{0}",0x7FF,"x"]],
-    22:["bl $", ["(pc if pc != None else 4) + ((({0}^0x400) << 11 | {1}) - 0x200000)*2", 0x7FF, 0x7FF<<16,"0>8x"]],
+    22:["bl $", ["(pc if pc is not None else 4) + ((({0}^0x400) << 11 | {1}) - 0x200000)*2", 0x7FF, 0x7FF<<16,"addr"]],
 }
 
 ArmDisasmTree = {
@@ -123,7 +123,7 @@ ArmDisasmTree = {
     9:[],
     10:[(("stm","ldm"),1<<20), (("da","ia","db","ib"),3<<23), ["c"], (" r{0}",15<<16), (("","!"),1<<21), ", {", 
         ["rlist({0})",0xFFFF], "}", (("","^"),1<<22)],
-    11:[(("b","bl"),1<<24), ["c"], " $", ["(pc if pc != None else 8) + (({0}^2**23)-2**23)*4",0xFFFFFF,"0>8x"]],
+    11:[(("b","bl"),1<<24), ["c"], " $", ["(pc if pc != None else 8) + (({0}^2**23)-2**23)*4",0xFFFFFF,"addr"]],
     12:["cdp", ["'2' if c == 'nv' else c"], (" p{0}, #{1}, c{2}, c{3}, c{4}, #{5}", 15<<8, 15<<20, 15<<12, 15<<16, 15, 7<<5)],
     13:[(("stc","ldc"),1<<20), ["'2' if c == 'nv' else ''"], (("","l"),1<<22), ["c if c != 'nv' else ''"], 
         (" p{0}, c{1}, [r{2}", 15<<8, 15<<12, 15<<16), (24,2), "]", ", ", (("-",""),1<<23), "0x", ["4*{0}",255,"x"], 
@@ -145,7 +145,7 @@ def disasm(instr, Mode=1, pc=None):
         template = ArmDisasmTree[FuncID]
         c = suffixes[instr>>28]
 
-    def getsegment(bitmask): 
+    def getsegment(bitmask):  # returns a segment of instr
         return (instr & bitmask) >> (int.bit_length(bitmask & -bitmask) - 1)
 
     out = ""
@@ -157,30 +157,29 @@ def disasm(instr, Mode=1, pc=None):
         if T is tuple:
             arg1,*arg2 = code
             T2 = type(arg1)
-            if T2 is tuple: out += arg1[getsegment(arg2[0])]
-            elif T2 is str: out += arg1.format(*map(lambda x:getsegment(x),arg2))
-            elif T2 is int and getsegment(1<<arg1): index += arg2[0]
-            elif T2 is list:
-                T3 = type(arg1[0])
-                if T3 is int and getsegment(arg1[0]) in arg1[1:]: index += arg2[0]
-                elif T3 is str and eval(arg1[0]) in arg1[1:]: index += arg2[0]
-        elif T is str: out += code
-        elif T is int: index += code
-        elif T is list:
+            if T2 is tuple: out += arg1[getsegment(arg2[0])]  # [(strings), bitmask] selects a string based on bitmask
+            elif T2 is str: out += arg1.format(*map(lambda x:getsegment(x),arg2))  # [str, bitmasks] inserts bitmasks into str
+            elif T2 is int and getsegment(1<<arg1): index += arg2[0]  # if correct bit is on, jump
+            elif T2 is list:  # [bitmask, values] if bitmask is in values, jump
+                if getsegment(arg1[0]) in arg1[1:]: index += arg2[0]
+        elif T is str: out += code  # adds str to output
+        elif T is int: index += code  # jumps ahead
+        elif T is list:  # [str, bitmasks, format] inserts bitmasks into str, then evaluates, and formats
             arg1,*arg2 = code
             if arg2:
                 fstr = arg2.pop() if type(arg2[-1]) is str else ""
+                if fstr == "addr":  # presets for address strings
+                    fstr = "0>8x" if pc else "x"
                 newstr = eval(arg1.format(*map(lambda x:getsegment(x),arg2)))
                 out += f"{newstr:{fstr}}"
             else: out += eval(arg1)
         if index == init: index += 1
         elif index < init: break
 
-    if pc: 
+    if pc:  # replaces relative addresses with true addresses (and values in case of ldr)
         def subs(matchobj): 
             addr = (pc&~2) + int(matchobj.group(1), 16)
             return f"[${addr:0>8X}] (=${mem_read(addr,4):0>8X})"
         out = re.sub(r"\[r15, \$?([0-9a-fx]+)\]", subs, out)
-    else: out = re.sub(r"(\$|0x|#)?(0*?)-", r"-\g<1>0\2", out)
-    return out.replace("r13","sp").replace("r14","lr").replace("r15","pc") or "[???]"
 
+    return out.replace("r13","sp").replace("r14","lr").replace("r15","pc").replace("$-","-$") or "[???]"

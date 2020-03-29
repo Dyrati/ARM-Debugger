@@ -6,7 +6,7 @@ from Components.Disassembler import disasm
 from Components.Assembler import assemble
 from Components.FunctionFlow import generateFuncList
 
-VERSION_INFO = "Last Updated March 20, 2020"
+VERSION_INFO = "Last Updated March 28, 2020"
 print(f"VERSION INFO: {VERSION_INFO}")
 
 
@@ -14,13 +14,19 @@ print(f"VERSION INFO: {VERSION_INFO}")
 
 ROMPATH = sys.argv[1] if len(sys.argv) > 1 else None
 STATEPATH = sys.argv[2] if len(sys.argv) > 2 else None
+OUTPUTFILE = "Debugger_Output.txt"
+TERMINALFILE = "Debugger_Terminal.txt"
+FileLimit = 10*2**20
+ShowRegistersInAsmMode = True
+REG_INIT = [0]*16 + [0x08000000]
+FormatPresets = {
+    "line": r"{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}",
+    "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr} {REG[16]:0>8X}\n",
+    "linexl": r'{addr}:,{instr},"{asm:20}",{cpsr},{r0-r15:,}',
+    "blockxl": r'{addr}:,{instr},"{asm}"\n,{r0-r3:,}\n,{r4-r7:,}\n,{r8-r11:,}\n,{r12-r15:,}\n,{cpsr},{REG[16]:0>8X}\n'
+}
+DefaultFormat = "line"
 Commandque = []
-with open(r"Debugger_Settings.txt") as f:
-    Settings = list(f)
-    InitCommandsLineNum = Settings.index("InitialCommands:\n")
-    exec("".join(Settings[:InitCommandsLineNum]))
-    Commandque.extend(reversed(Settings[InitCommandsLineNum+2:]))
-
 
 RAM = bytearray(740322); ARMCPU.RAM = RAM; Disassembler.RAM = RAM
 ROM = bytearray(); ARMCPU.ROM = ROM; Disassembler.ROM = ROM; FunctionFlow.ROM = ROM
@@ -43,6 +49,15 @@ TerminalHandle = None
 UserVars = {}
 UserFuncs = {}
 LocalSaves = {}
+
+# Load data from settings file
+try:
+    with open(r"Debugger_Settings.txt") as f:
+        Settings = list(f)
+        InitCommandsLineNum = Settings.index("InitialCommands:\n")
+        exec("".join(Settings[:InitCommandsLineNum]))
+        Commandque.extend(reversed(Settings[InitCommandsLineNum+2:]))
+except FileNotFoundError: pass
 
 Matchfunc = re.compile(r"(\w*)\(\)")  # user and global functions
 Matchassign = re.compile(r"(?<![!=<>])(?:\+|-|\*|/|//|<<|>>|\*\*)?=")  # assignment of values
@@ -126,7 +141,9 @@ helptext = """
     dist [addr] (count)             display *count* instructions starting from addr in THUMB
     disa [addr] (count)             display *count* instructions starting from addr in ARM
     m [addr] (count) (size)         display the memory at addr (count=1, size=4 by default)
-
+    asm (addr): (command)           assemble a command written in Thumb.  If *addr* is included, you can utilize 
+                                        absolute address references like "bl $08014878", or "ldr r0, [$08014894]"
+                                        if *command* is omitted, it enters multiline mode
 
     if [condition]: [command]       execute *command* if *condition* is true
     while [condition]: [command]    repeat *command* while *condition* is true
@@ -156,7 +173,7 @@ helptext = """
     exportstate (filepath)          save the current state to a file; filepath = (most recent import) by default
                                         will overwrite the destination, back up your saves!
     reset                           reset the emulator (clears the RAM and resets registers)
-    output [condition]              when *condition* is True, outputs to "Debugger_Output.txt"; (after each instruction)
+    output [condition]              when *condition* is True, outputs to "Debugger_Output.txt" every CPU instruction
                                         if *condition* is "clear", deletes all the data in "Debugger_Output.txt"
                                         if *condition* is "terminal", binds the terminal to "Debugger_Terminal.txt"
     format [formatstr]              set the format of data sent to the output file (more details in the ReadMe)
@@ -375,6 +392,33 @@ def com_i():
 def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
 def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
 def com_m(addr,count=1,size=4): hexdump(expeval(addr),expeval(count),expeval(size))
+def com_asm(command):
+    base, asm_string = re.match(r"asm\s*([^ :]*)\s*:?\s*(.*)", command).groups()
+    base = expeval(base) + 4 if base else None
+    if asm_string:
+        hex_value = assemble(asm_string, pc=base)
+        print(f"{hex_value:0>4x}  {disasm(hex_value, pc=base)}")
+    else:
+        asm_list = []
+        addr_list = [base]
+        inputstr = ""
+        while True:
+            if base is not None: inputstr = f"{base-4:0>8x}: "
+            asm_input = input(inputstr)
+            if not asm_input: break
+            asm_list.append(asm_input)
+            if base is not None:
+                base += 2 if not re.match(r"bl\s*\S", asm_input) else 4
+                addr_list.append(base)
+        addr_list = iter(addr_list)
+        base = next(addr_list)
+        for line in asm_list:
+            hex_value = assemble(line, pc=base)
+            formatted_value = f"{hex_value:0>4x}".ljust(9)
+            if base is not None: formatted_value = f"{base-4:0>8x}: " + formatted_value
+            print(formatted_value, disasm(hex_value, pc=base))
+            instr_size = 2 if hex_value < 0xF800F000 else 4
+            if base is not None: base = next(addr_list)
 def com_if(command):
     condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
     if expeval(condition): Commandque.append(command)
@@ -421,7 +465,7 @@ def com_exportstate(filepath=''):
     with gzip.open(filepath,"wb") as f: f.write(RAM)
     print("State saved to " + filepath)
 def com_output(condition):
-    global OutputHandle, OutputCondition, TerminalHandle, print
+    global OutputHandle, OutputCondition, TerminalHandle, print, input
     if condition.lower() in {"close", "false", "none"}: 
         OutputCondition = False
         if OutputHandle: OutputHandle.close()
@@ -435,9 +479,13 @@ def com_output(condition):
                 printinit(*args, **keywords)
                 TerminalHandle.write(" ".join(args) + "\n")
             FunctionFlow.print = print
+            def input(prompt, inputinit = input):
+                out = inputinit(prompt)
+                TerminalHandle.write(prompt + out + "\n")
+                return out
         else: 
             TerminalHandle = None
-            del print, FunctionFlow.print
+            del print, FunctionFlow.print, input
             print("Terminal unbound from " + TERMINALFILE)
     else:
         if not OutputHandle: 
@@ -457,12 +505,8 @@ def com_quit(): sys.exit()
 
 
 commands = {
-    "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, 
-    "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, 
-    "def":com_def, "tree": com_tree, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, 
-    "funcs":com_funcs, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, 
-    "reset":reset, "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, 
-    "exit":com_quit}
+    "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "asm": com_asm, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, "def":com_def, "tree": com_tree, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit
+}
 
 
 Show = True
@@ -471,11 +515,11 @@ PauseCount = 0
 CPUCOUNT = 0
 SETINSTR = None
 lastcommand = ">"
-Modelist = {"@":"@", "asm":"@", "$":"$", "exec":"$", ">":">", "debug":">"}
+Modelist = {"@", "$", ">"}
 ProgramMode = ">"
 OutputFormat = formatstr(DefaultFormat)
 
-comtype1 = {"def", "format"}  # functions that use the entire command
+comtype1 = {"def", "format", "asm"}  # functions that use the entire command
 comtype2 = {"if", "while", "rep", "repeat", "importrom", "importstate", "exportstate", "output"}  # functions that only use the args
 
 UpdateCheck = None
@@ -491,9 +535,8 @@ while True:
                 command = Commandque.pop()
             else:
                 if OutputCondition: OutputHandle.flush()
-                if TerminalHandle: TerminalHandle.write(ProgramMode + " "); TerminalHandle.flush()
+                if TerminalHandle: TerminalHandle.flush()
                 command = input(ProgramMode + " ")
-                if TerminalHandle: TerminalHandle.write(command + "\n")
             if type(command) is int:  # handles repeat loops
                 if command > 0: Commandque.append(command-1); command = Commandque[-2]
                 else: Commandque.pop(); continue
@@ -504,7 +547,7 @@ while True:
             if REG[15:16] != UpdateCheck: UpdateGlobalInfo(); UpdateCheck = REG[15:16]  # Only updates if r15 or r16 have changed
             if command == "": command = lastcommand
             else: lastcommand = command
-            if command in Modelist: ProgramMode = Modelist[command]; continue
+            if command in Modelist: ProgramMode = command; continue
             if ProgramMode == "@":
                 try: 
                     SETINSTR = assemble(command, REG[15] + 2*MODE)
