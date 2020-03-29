@@ -232,7 +232,7 @@ These Modes are indicated by the input prompt.
 You can freely switch between these modes, including as part of function calls and loops.
 
 ### Assembly Mode
-To enter Assembly Mode, type: `@` or `asm`.  
+To enter Assembly Mode, type: `@`.  
 In this mode, you can type in Thumb Code, which is then immediately executed.  If the Thumb code is not recognized, it will attempt to execute the command in Normal Mode.  You do not need to already be in Thumb mode to execute the instruction.  
 ```
 # display the registers
@@ -260,7 +260,7 @@ You can disable the automatic display of registers in `Settings.txt`
 
 
 ### Execution Mode
-To enter Execution Mode, type: `$` or `exec`.  
+To enter Execution Mode, type: `$`.  
 In this mode, you can type in real Python code, which is executed immediately.  
 Here you have unrestrained access to all the global functions and variables of the script.  
 User Expressions do not work in this mode.  The commands must be valid Python.  
@@ -272,4 +272,4 @@ Some useful commands in this mode include:
 - `os, sys, traceback` - python modules
 
 ### Normal Mode
-Normal mode is the default mode.  To reenter Normal Mode, type: `>` or `debug`.
+Normal mode is the default mode.  To reenter Normal Mode, type: `>`.
