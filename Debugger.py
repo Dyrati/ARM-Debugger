@@ -18,7 +18,7 @@ OUTPUTFILE = "Debugger_Output.txt"
 TERMINALFILE = "Debugger_Terminal.txt"
 FileLimit = 10*2**20
 ShowRegistersInAsmMode = True
-REG_INIT = [0]*16 + [0x08000000]
+REG_INIT = [0]*15 + [0x08000004, 0]
 FormatPresets = {
     "line": r"{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}",
     "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr} {REG[16]:0>8X}\n",
@@ -142,7 +142,7 @@ helptext = """
     disa [addr] (count)             display *count* instructions starting from addr in ARM
     m [addr] (count) (size)         display the memory at addr (count=1, size=4 by default)
     asm (addr): (command)           assemble a command written in Thumb.  If *addr* is included, you can utilize 
-                                        absolute address references like "bl $08014878", or "ldr r0, [$08014894]"
+                                        absolute address references, like "bl $08014878", or "ldr r0, [$08014894]"
                                         if *command* is omitted, it enters multiline mode
 
     if [condition]: [command]       execute *command* if *condition* is true
@@ -183,12 +183,12 @@ helptext = """
     ?/help                          print the help text
     quit/exit                       exit the program
 
-    @/asm                           switch to Assembly Mode
+    @                               switch to Assembly Mode
                                         In this mode, you may type in Thumb code. The code is immediately executed.
                                         If the code is not recognized, it will attempt to execute it in Debug Mode
-    $/exec                          switch to Execution Mode
+    $                               switch to Execution Mode
                                         In this mode, you may type in valid Python code to execute.
-    >/debug                         switch to Debug Mode (the default mode)
+    >                               switch to Debug Mode (the default mode)
 
 
     Any arguments may be replaced with User Expressions. Expressions may include any user defined variables,
