@@ -23,5 +23,5 @@
 - improved file system error messages
 - added dir, getcwd, and chdir os commands
 - Completely rewrote assembler, eliminating reliance on eval();
--   now has more than twice as many lines of code, but is 3 times faster
+  - now has more than twice as many lines of code, but is 3 times faster
 - made disassembler ignore 0xb600-0xbbff range
