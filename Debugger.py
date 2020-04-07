@@ -6,7 +6,7 @@ from Components.Disassembler import disasm
 from Components.Assembler import assemble
 from Components.FunctionFlow import generateFuncList, functionBounds
 
-VERSION_INFO = "Last Updated March 28, 2020"
+VERSION_INFO = "Last Updated April 6th, 2020"
 print(f"VERSION INFO: {VERSION_INFO}")
 
 
@@ -224,7 +224,7 @@ helptext = """
     format [formatstr]              set the format of data sent to the output file (more details in the ReadMe)
                                         Interpolate expressions by enclosing them in curly braces
                                         presets: line / block / linexl / blockxl
-                                        
+
     cls                             clear the console
     dir (path)                      print all files/folders in the directory specified by *path*
     getcwd                          print the path to the current directory
