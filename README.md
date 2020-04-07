@@ -118,23 +118,23 @@ If the command takes multiple arguments, then each expression must not contain s
 - `saves` - print all local saves  
 
 **You can write multiple commands in a single line by separating them with `;`**  
-**You can use multiple-command if/while/repeat instructions by separating each inner command with `\`**  
+**You can use multiple-command if/while/repeat instructions by separating each inner command with `..`**  
 (using a semicolon will end the if/while/repeat instruction)  
 The commands may be anything, including function calls, loops, and even [Debugger Mode Swaps](#alternate-debugger-modes).
 ```
 > wram = $02000000; m wram 32 1
 02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
 02000010:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
-> iter = 0; rep 32: m(wram + iter) = iter \ iter += 1; m wram 32 1
+> iter = 0; rep 32: m(wram + iter) = iter .. iter += 1; m wram 32 1
 02000000:  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F   ................
 02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
-> def clear: iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 \ iter += 1
+> def clear: iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 .. iter += 1
 > arg0 = wram; arg1 = 16; clear()
 > m wram 32 1
 02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
 02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
 > funcs
-{'clear': iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 \ iter += 1}
+{'clear': iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 .. iter += 1}
 ```  
 
 ### Local Saves
