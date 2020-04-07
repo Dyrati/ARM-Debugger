@@ -25,3 +25,4 @@
 - Completely rewrote assembler, eliminating reliance on eval();
   - now has more than twice as many lines of code, but is 3 times faster
 - made disassembler ignore 0xb600-0xbbff range
+- made console commands exclusive to the "commands" table; no longer in the global table
