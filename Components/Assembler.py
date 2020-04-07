@@ -161,7 +161,7 @@ def thumb_strh(args, types):
 
 def thumb_ldr(args, types, pc):
     if types[2][0] is int:
-        out = 0x4800 | setbits(7<<8, args[1]) | setbits(0xff, args[2][0] - (pc & ~2)//4)
+        out = 0x4800 | setbits(7<<8, args[1]) | setbits(0xff, (args[2][0] - (pc & ~2))//4)
     elif args[2][0] == 15:
         out = 0x4800 | setbits(7<<8, args[1]) | setbits(0xff, args[2][1]//4)
     elif args[2][0]==13:
@@ -276,8 +276,7 @@ def assemble(instr, pc=None):
     if types == (str, str, str):
         if args[1] > 7 or args[2] > 7: return thumb_HiReg(args)
         elif name in AluOps: return thumb_alu(args)
-        else: return globals()["thumb_" + name](args)
-    elif name in globals():
+    if ("thumb_" + name) in globals():
         inputs = [args]
         if name in MultiTypes: inputs.append(types)
         if name in PC_Relative: inputs.append(pc)
