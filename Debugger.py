@@ -473,15 +473,15 @@ def getConsoleCommands():
         base = expeval(base) + 4 if base else None
         if asm_string:
             hex_value = assemble(asm_string, pc=base)
-            print(f"{hex_value:0>4x}  {disasm(hex_value, pc=base)}")
+            print(f"{hex_value:0>4X}  {disasm(hex_value, pc=base)}")
         else:
             asm_list = []
             while True:
-                inputstr = f"{base-4:0>8x}: " if base is not None else ""
+                inputstr = f"{base-4:0>8X}: " if base is not None else ""
                 asm_input = input(inputstr)
                 if not asm_input: break
                 hex_value = assemble(asm_input, pc=base)
-                asm_list.append(inputstr + f"{hex_value:0>4x}".ljust(10) + disasm(hex_value, pc=base))
+                asm_list.append(inputstr + f"{hex_value:0>4X}".ljust(10) + disasm(hex_value, pc=base))
                 if base is not None:
                     base += 2 if not re.match(r"bl\s*\S", asm_input) else 4
             if inputstr: print()
