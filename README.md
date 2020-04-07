@@ -47,6 +47,8 @@ That's pretty much all you need to get started.  The rest of this readme is just
 - `asm (addr): (command)` - assemble a command written in Thumb
     - if *addr* is included, you can utilize absolute address references, like `bl $08014878` or `ldr r0, [$08014894]`
     - if *command* is omitted, it enters multiline mode, allowing you to paste multiple commands
+- `disasm [code]` - disassembles a single 16-bit number into a Thumb instruction
+- `fbounds [addr]` - detects and displays the boundaries of the Thumb function containing *addr*
 
 **Enter in nothing to execute the previous command.**  
 
@@ -139,7 +141,7 @@ The commands may be anything, including function calls, loops, and even [Debugge
 `save` and `load` only apply to local saves.  Local saves are temporarily stored in the current session.  They can be given names and loaded with those names at any time.  To overwrite an actual savestate file, use `exportstate`.  
 
 
-## File Commands
+## File and OS Commands
 - `importrom [filepath]` - import a rom into the debugger
 - `importstate [filepath]` - import a savestate
 - `exportstate (filepath)` - save the current state to a file; 
@@ -149,8 +151,17 @@ The commands may be anything, including function calls, loops, and even [Debugge
 - `output [condition]`
     - after each CPU instruction, if *condition* is True, the debugger will write data to "Debugger_Output.txt"
     - if *condition* is **clear**, deletes all of the data in "Debugger_Output.txt"
-    - if *condition* is **terminal**, binds the terminal to "Debugger_Terminal.txt"; repeat this command to unbind it
+- `terminal [command]`
+    - allows you to bind the terminal to "Debugger_Terminal.txt", where things look exactly how they do in the terminal
+    - *command* may be **true** or **false** to bind/unbind.  If omitted, it toggles the bound state
+    - if *command* is **clear**, deletes all of the data in "Debugger_Terminal.txt"
 - `format: [formatstr]` - set the format of data sent to the output file; see [Formats](#formats)
+- `cls` - clear the console
+- `dir (path)` - print all files/folders in the directory specified by *path*
+- `getcwd` - print the path of the current directory
+- `chdir [path]` - change the current directory
+- `quit/exit` - exit the program
+
 
 ## Formats
 
