@@ -21,7 +21,7 @@ def mem_read(addr,size=4):
 
 ThumbBounds = (
     0x1800,0x2000,0x4000,0x4400,0x4800,0x5000,0x6000,0x9000,0xA000,0xB000,0xB100,
-    0xB400,0xBE00,0xC000,0xD000,0xDE00,0xDF00,0xE000,0xE800,0xF000,0xF800,0x10000,
+    0xB400,0xBE00,0xC000,0xD000,0xDE00,0xDF00,0xE000,0xE800,0xF000,0xF800,0x10000,0xF800F000
 )
 
 ArmTree = {
@@ -84,7 +84,7 @@ ThumbDisasmTree = {
     9:[("add r{0}, ",7<<8), (("pc","sp"),1<<11), ", 0x", ["4*{0}",255,"x"]],
     10:[(("add","sub"),1<<7), " sp, 0x", ["4*{0}",127,"x"]],
     11:[],
-    12:[(("push","pop"),1<<11), " {", ["rlist({0}|{1}<<{2}+14)", 255, 1<<8, 1<<11], "}"],
+    12:[([3<<9,0,1,3],-1), (("push","pop"),1<<11), " {", ["rlist({0}|{1}<<{2}+14)", 255, 1<<8, 1<<11], "}"],
     13:[(8,2), ("bkpt ${0:x}",255)],
     14:[(("stmia","ldmia"),1<<11), (" r{0}!, ",7<<8), "{", ["rlist({0})",255], "}"],
     15:["b", ["suffixes[{0}]",15<<8], " $", ["(pc if pc is not None else 4) + 2*(({0}^2**7)-2**7)",255,"addr"]],
@@ -93,8 +93,9 @@ ThumbDisasmTree = {
     18:["b $",["(pc if pc is not None else 4) + 2*(({0}^2**10) - 2**10)",0x7FF,"addr"]],
     19:[],
     20:[],
-    21:["bl", ([0x7FF,0],-1), "h $", ["2*{0}",0x7FF,"x"]],
-    22:["bl $", ["(pc if pc is not None else 4) + ((({0}^0x400) << 11 | {1}) - 0x200000)*2", 0x7FF, 0x7FF<<16,"addr"]],
+    21:["bl", ([0x7FF,0],-1), "h $", ["2*{0}",0x7FF,"X"]],
+    22:[],
+    23:["bl $", ["(pc if pc is not None else 4) + ((({0}^0x400) << 11 | {1}) - 0x200000)*2", 0x7FF, 0x7FF<<16, "addr"]],
 }
 
 ArmDisasmTree = {
@@ -132,7 +133,7 @@ ArmDisasmTree = {
         (" p{0}, #{1}, r{2}, c{3}, c{4}, #{5}", 15<<8, 7<<21, 15<<12, 15<<16, 15, 7<<5)],
     15:[(("mcrr","mrrc"),1<<20), ["'2' if c == 'nv' else c"],
         (" p{0}, #{1}, r{2}, r{3}, c{4}", 15<<8, 15<<4, 15<<12, 15<<16, 15)],
-    16:[(27,4), "bkpt $", ["{0}<<4 | {1}", 0xFFF<<8, 15,"x"], -1, "swi", ["c"], (" ${0:x}",2**24-1)],
+    16:[(27,4), "bkpt $", ["{0}<<4 | {1}", 0xFFF<<8, 15,"X"], -1, "swi", ["c"], (" ${0:x}",2**24-1)],
 }
 
 
@@ -169,7 +170,7 @@ def disasm(instr, Mode=1, pc=None):
             if arg2:
                 fstr = arg2.pop() if type(arg2[-1]) is str else ""
                 if fstr == "addr":  # presets for address strings
-                    fstr = "0>8x" if pc else "x"
+                    fstr = "0>8X" if pc else "X"
                 newstr = eval(arg1.format(*map(lambda x:getsegment(x),arg2)))
                 out += f"{newstr:{fstr}}"
             else: out += eval(arg1)

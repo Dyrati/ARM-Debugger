@@ -4,34 +4,42 @@ from Components import ARMCPU, Disassembler, FunctionFlow
 from Components.ARMCPU import mem_read, mem_write
 from Components.Disassembler import disasm
 from Components.Assembler import assemble
-from Components.FunctionFlow import generateFuncList
+from Components.FunctionFlow import generateFuncList, functionBounds
 
 VERSION_INFO = "Last Updated March 28, 2020"
 print(f"VERSION INFO: {VERSION_INFO}")
 
 
-# Initialization #
+# Default Settings #
 
 ROMPATH = sys.argv[1] if len(sys.argv) > 1 else None
 STATEPATH = sys.argv[2] if len(sys.argv) > 2 else None
-OUTPUTFILE = "Debugger_Output.txt"
-TERMINALFILE = "Debugger_Terminal.txt"
+OUTPUTFILE = r"Debugger_Output.txt"
+TERMINALFILE = r"Debugger_Terminal.txt"
+ROMDIRECTORY = r""
+SAVEDIRECTORY = r""
+
 FileLimit = 10*2**20
 ShowRegistersInAsmMode = True
+
 REG_INIT = [0]*15 + [0x08000004, 0]
+
 FormatPresets = {
-    "line": r"{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}",
-    "block": r"{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr} {REG[16]:0>8X}\n",
-    "linexl": r'{addr}:,{instr},"{asm:20}",{cpsr},{r0-r15:,}',
-    "blockxl": r'{addr}:,{instr},"{asm}"\n,{r0-r3:,}\n,{r4-r7:,}\n,{r8-r11:,}\n,{r12-r15:,}\n,{cpsr},{REG[16]:0>8X}\n'
+    'line': r'{addr}: {instr}  {asm:20}  {cpsr}  {r0-r15}',
+    'block': r'{addr}: {instr}  {asm}\n  {r0-r3}\n  {r4-r7}\n  {r8-r11}\n  {r12-r15}\n  {cpsr} {REG[16]:0>8X}\n',
+    'linexl': r'{addr}:,{instr},"{asm:20}",{cpsr},{r0-r15:,}',
+    'blockxl': r'{addr}:,{instr},"{asm}"\n,{r0-r3:,}\n,{r4-r7:,}\n,{r8-r11:,}\n,{r12-r15:,}\n,{cpsr},{REG[16]:0>8X}\n'
 }
+
 DefaultFormat = "line"
-Commandque = []
+
+
+# Initialization #
 
 RAM = bytearray(740322); ARMCPU.RAM = RAM; Disassembler.RAM = RAM
 ROM = bytearray(); ARMCPU.ROM = ROM; Disassembler.ROM = ROM; FunctionFlow.ROM = ROM
 REG = REG_INIT.copy(); ARMCPU.REG = REG
-RegionMarkers = {
+RegionMarkers = {  # Base, Length pairs
     2:(0x85df,0x48400),     # WRAM
     3:(0x1df,0x8000),       # IRAM
     4:(0x8ebe7,0x8ee08),    # I/O
@@ -45,7 +53,9 @@ Disassembler.RegionMarkers = RegionMarkers
 OutputHandle = None
 OutputCondition = False
 TerminalHandle = None
+TerminalState = False
 
+Commandque = []
 UserVars = {}
 UserFuncs = {}
 LocalSaves = {}
@@ -53,15 +63,24 @@ LocalSaves = {}
 # Load data from settings file
 try:
     with open(r"Debugger_Settings.txt") as f:
-        Settings = list(f)
-        InitCommandsLineNum = Settings.index("InitialCommands:\n")
-        exec("".join(Settings[:InitCommandsLineNum]))
-        Commandque.extend(reversed(Settings[InitCommandsLineNum+2:]))
-except FileNotFoundError: pass
+        Settings = f.read()
+        Setting_Sections = re.search(r"Directories:\s*(.*?)Global\sVars:\s*(.*?)Initial\sCommands:\s*\n(.*)", Settings, re.S).groups()
+        for line in Setting_Sections[0].split("\n"):
+            if line:
+                identifier, filepath = re.search(r"(.*?)\s*=\s*\"?(.*?)\"?\s*$", line).groups()
+                if os.path.exists(filepath): globals()[identifier] = filepath
+                elif filepath: print(f"FileNotFoundError: \"{filepath}\"")
+        exec(Setting_Sections[1])
+        for line in reversed(Setting_Sections[2].split("\n")[1:]):
+            if line: Commandque.append(line)
+except FileNotFoundError as e: print(type(e).__name__ + ": Debugger_Settings.txt")
+except AttributeError as e: print(type(e).__name__ + ": Error parsing Debugger_Settings.txt")
+except Exception as e: print(type(e).__name__ + ":", e, "in Debugger_Settings.txt")
 
-Matchfunc = re.compile(r"(\w*)\(\)")  # user and global functions
-Matchassign = re.compile(r"(?<![!=<>])(?:\+|-|\*|/|//|<<|>>|\*\*)?=(?!=)")  # assignment of values
-Matchargs = re.compile(r"([^ :(]+)[ :]*(.*)")  # grabs the debugger command and its arguments
+
+Matchfunc = re.compile(r"(\w*)\(\)")  # user and global functions; matching args in parentheses breaks m(...) command
+Matchassign = re.compile(r"(?<![!=<>])(?:\+|-|\*|/|//|%|<<|>>|\*\*|&|\||\^)?=(?!=)")  # match assigment operators
+Matchargs = re.compile(r"([^ :(]+)\s*:?(.*)")  # grabs the debugger command and its arguments
 
 
 def UpdateGlobalInfo():
@@ -102,12 +121,16 @@ def reset_breakpoints():
 
 def importrom(filepath):
     reset()
+    defaultpath = ROMDIRECTORY + "\\" + filepath
+    if os.path.isfile(defaultpath): filepath = defaultpath
     with open(filepath,"rb") as f:
         ROM[:] = bytearray(f.read())
     UpdateGlobalInfo()
 
 
 def importstate(filepath):
+    defaultpath = SAVEDIRECTORY + "\\" + filepath
+    if os.path.isfile(defaultpath): filepath = defaultpath
     with gzip.open(filepath,"rb") as f:
         RAM[:] = bytearray(f.read())
     for i in range(17):
@@ -119,6 +142,24 @@ reset()
 reset_breakpoints()
 if ROMPATH: importrom(ROMPATH)
 if STATEPATH: importstate(STATEPATH)
+
+
+def print(*args, printinit=print, sep=" ", end="\n", file=sys.stdout, flush=False):
+    """Enables printing to stdout and Terminal file simultaneously"""
+
+    if TerminalState: TerminalHandle.write(sep.join(args) + end)
+    printinit(*args, sep=sep, end=end, file=file, flush=flush)
+
+FunctionFlow.print = print
+
+
+def input(prompt, inputinit=input):
+    """Can print inputs to Terminal file"""
+
+    contents = inputinit(prompt)
+    if TerminalState: TerminalHandle.write(prompt + contents + "\n")
+    return contents
+
 
 
 helptext = """
@@ -144,6 +185,8 @@ helptext = """
     asm (addr): (command)           assemble a command written in Thumb.  If *addr* is included, you can utilize 
                                         absolute address references, like "bl $08014878", or "ldr r0, [$08014894]"
                                         if *command* is omitted, it enters multiline mode
+    disasm [code]                   disassembles 16-bit machine code into Thumb
+    fbounds [addr]                  detects and displays the boundaries of the function containing *addr*
 
     if [condition]: [command]       execute *command* if *condition* is true
     while [condition]: [command]    repeat *command* while *condition* is true
@@ -175,11 +218,17 @@ helptext = """
     reset                           reset the emulator (clears the RAM and resets registers)
     output [condition]              when *condition* is True, outputs to "Debugger_Output.txt" every CPU instruction
                                         if *condition* is "clear", deletes all the data in "Debugger_Output.txt"
-                                        if *condition* is "terminal", binds the terminal to "Debugger_Terminal.txt"
+    terminal (command)              can bind the terminal to "Debugger_Settings.txt"
+                                        *command* may be true/false; if omitted, the bound status is toggled
+                                        if *command* is "clear", clears the terminal
     format [formatstr]              set the format of data sent to the output file (more details in the ReadMe)
                                         Interpolate expressions by enclosing them in curly braces
                                         presets: line / block / linexl / blockxl
+                                        
     cls                             clear the console
+    dir (path)                      print all files/folders in the directory specified by *path*
+    getcwd                          print the path to the current directory
+    chdir [path]                    change the current directory
     ?/help                          print the help text
     quit/exit                       exit the program
 
@@ -210,7 +259,7 @@ def disT(addr,count=1):
             instr = mem_read(init,4)
             addr += 2
             sinstr = f"{instr & 0xFFFF:0>4x} {instr>>16:0>4x}"
-        print(f"{init:0>8x}: {sinstr}  {disasm(instr,1,init+4)}")
+        print(f"{init:0>8X}: {sinstr}  {disasm(instr,1,init+4)}")
         addr += 2
 
 
@@ -219,7 +268,7 @@ def disA(addr,count=1):
 
     for i in range(count):
         instr = mem_read(addr,4)
-        print(f"{addr:0>8x}: {instr:0>8x}   {disasm(instr,0,addr+8)}")
+        print(f"{addr:0>8X}: {instr:0>8x}   {disasm(instr,0,addr+8)}")
         addr += 4
 
 
@@ -227,9 +276,9 @@ def rlist_to_int(string):
     """Takes an rlist string as input, and outputs a corresponding integer"""
 
     rlist = 0
-    string = re.sub("r|R", "", string)
-    for m in re.finditer("[^,]+", string):
-        args = m.group(0).split("-")
+    string = re.sub(r"r|R", "", string)
+    for m in re.finditer(r"[^,]+", string):
+        args = m.group().split("-")
         if len(args) == 1: lo,hi = args*2
         else: lo,hi = args
         rlist |= 2**(int(hi) + 1) - 2**int(lo)
@@ -280,19 +329,33 @@ def showreg():
     print(f"{s}CPSR: {cpsr_str(REG[16])}  {REG[16]:0>8X}")
 
 
+expstr_compile = (
+    (
+        (re.compile(r"\b[a-zA-Z]\w*(?!\'|\")"), lambda m: expstr_compile[2](m.group(), expstr_compile[1])),
+        (re.compile(r"\$"), r"0x"),
+        (re.compile(r"#"), r""),
+        (re.compile(r"\bx(\d+)"), r"0x\1"),
+        (re.compile(r"\br(\d+)"), r"REG[\1]"),
+        (re.compile(r"\bm\((.*?)\)"), r"mem_read(\1)"),
+    ),
+    {"sp":"r13", "lr":"r14", "pc":"r15"},
+    lambda m, reps: repr(UserVars[m]) if m in UserVars else reps[m] if m in reps else m,
+)
+
 def expstr(string):
     """Converts a user string into a string that can be called with eval()"""
-
-    reps = {"sp":"r13", "lr":"r14", "pc":"r15"}
-    def subs(matchobj): 
-        m = matchobj.group(0)
-        if m in UserVars: return str(UserVars[m])
-        elif m in reps: return reps[m]
-        else: return m
-    string = re.sub(r"[a-zA-Z]\w*", subs, string)
-    reps = {"\$":"0x", "#":"", r"\bx(\d+)":r"0x\1", r"\br(\d+)":r"REG[\1]", r"\bm\((.*)\)":r"mem_read(\1)"}
-    for k,v in reps.items(): string = re.sub(k,v,string)
-    return string
+    
+    global expstr_compile
+    if '"' in string:
+        stringsplit = string.split('"')
+        for i in range(1, len(stringsplit), 2): 
+            stringsplit[i] = repr(stringsplit[i])
+        for i in range(0, len(stringsplit), 2):
+            for k,v in expstr_compile[0]: stringsplit[i] = k.sub(v,stringsplit[i])
+        return ''.join(stringsplit)
+    else:
+        for k,v in expstr_compile[0]: string = k.sub(v,string)
+        return string
 
 
 def expeval(arg):
@@ -336,15 +399,24 @@ def formatstr(expstring):
     return out
 
 
+assign_compile = (
+    {"sp":"r13", "lr":"r14", "pc":"r15"},
+    re.compile(r"r(\d+)$"),
+    re.compile(r"m\(([^,]+),?(.+)?\)$"),
+    re.compile(r"\[(.*?)\]"),
+    re.compile(r"^([^ \[]*)"),
+)
+
 def assign(command, matchr=re.compile(r"r(\d+)$"), matchm=re.compile(r"m\(([^,]+),?(.+)?\)$")):
     """Assigns a value to a user variable"""
 
-    op = Matchassign.search(command).group(0)
+    global assign_compile
+    regnames, matchr, matchm, matchb, matchi = assign_compile
+    op = Matchassign.search(command).group()
     identifier,expression = command.split(op)
     identifier = identifier.strip()
-    try: expression = expeval(expression.strip())  # If expeval causes a syntax error, use regular eval
-    except SyntaxError: expression = eval(expression)
-    try: identifier = {"sp":"r13", "lr":"r14", "pc":"r15"}[identifier]
+    expression = expstr(expression.strip())
+    try: identifier = regnames[identifier]
     except KeyError: pass
     regmatch = matchr.match(identifier)
     memmatch = matchm.match(identifier)
@@ -353,13 +425,14 @@ def assign(command, matchr=re.compile(r"r(\d+)$"), matchm=re.compile(r"m\(([^,]+
     elif memmatch:
         arg0,arg1 = map(expeval, memmatch.groups())
         if arg1 is None: arg1 = 4
-        if op == "=": mem_write(arg0, expression, arg1)
+        if op == "=": mem_write(arg0, eval(expression), arg1)
         else: mem_write(arg0, eval(f"{mem_read(arg0,arg1)}{op[:-1]}{expression}"), arg1)
     else:
         if "[" in identifier:
-            identifier = re.sub(r"\[(.*?)\]", lambda x: f"[{expstr(x.group(1))}]", identifier)
-        identifier = re.sub(r"^([^ \[]*)", r"UserVars['\1']", identifier)
+            identifier = matchb.sub(lambda x: f"[{expstr(x.group(1))}]", identifier)
+        identifier = matchi.sub(r"UserVars['\1']", identifier)
         exec(f"{identifier}{op}{expression}")
+
 
 
 # Console Commands
@@ -370,28 +443,30 @@ def com_n(count=1):
 def com_c(count=0):
     global Show,Pause,PauseCount
     Show,Pause,PauseCount = False, False, expeval(count)
-def com_b(*args):
-    if args[0] == "all":
+def com_b(addr):
+    if addr == "all":
         print("BreakPoints: ", [f"{i:0>8X}" for i in sorted(BreakPoints)])
         print("WatchPoints: ", [f"{i:0>8X}" for i in sorted(WatchPoints)])
         print("ReadPoints:  ", [f"{i:0>8X}" for i in sorted(ReadPoints)])
         print("Conditionals:", Conditionals)
-    else: BreakPoints.add(expeval("".join(args)))
-def com_bw(*args): WatchPoints.add(expeval("".join(args)))
-def com_br(*args): ReadPoints.add(expeval("".join(args)))
-def com_bc(*args): Conditionals.append(expstr("".join(args)))
-def com_d(*args):
-    if args[0] == "all": reset_breakpoints(); print("Deleted all breakpoints")
-    else: BreakPoints.remove(expeval("".join(args)))
-def com_dw(*args): WatchPoints.remove(expeval("".join(args)))
-def com_dr(*args): ReadPoints.remove(expeval("".join(args)))
-def com_dc(*args): Conditionals.pop(expeval("".join(args)))
+    else: BreakPoints.add(expeval(addr))
+def com_bw(addr): WatchPoints.add(expeval(addr))
+def com_br(addr): ReadPoints.add(expeval(addr))
+def com_bc(addr): Conditionals.append(expstr(addr))
+def com_d(addr):
+    if addr == "all": reset_breakpoints(); print("Deleted all breakpoints")
+    else: BreakPoints.remove(expeval(addr))
+def com_dw(addr): WatchPoints.remove(expeval(addr))
+def com_dr(addr): ReadPoints.remove(expeval(addr))
+def com_dc(addr): Conditionals.pop(expeval(addr))
 def com_i():
     showreg()
     print(f"Next: {ADDR:0>8X}: {INSTR:0>{2*SIZE}X}  {disasm(INSTR, MODE, PCNT)}")
 def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
 def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
-def com_m(addr,count=1,size=4): hexdump(expeval(addr),expeval(count),expeval(size))
+def com_m(command): 
+    if re.match(r"\(", command): print(expeval("m" + command))
+    else: hexdump(*map(expeval, command.split(" ")))
 def com_asm(command):
     base, asm_string = re.match(r"asm\s*([^ :]*)\s*:?\s*(.*)", command).groups()
     base = expeval(base) + 4 if base else None
@@ -400,38 +475,45 @@ def com_asm(command):
         print(f"{hex_value:0>4x}  {disasm(hex_value, pc=base)}")
     else:
         asm_list = []
-        addr_list = [base]
-        inputstr = ""
         while True:
-            if base is not None: inputstr = f"{base-4:0>8x}: "
+            inputstr = f"{base-4:0>8x}: " if base is not None else ""
             asm_input = input(inputstr)
             if not asm_input: break
-            asm_list.append(asm_input)
+            hex_value = assemble(asm_input, pc=base)
+            asm_list.append(inputstr + f"{hex_value:0>4x}".ljust(10) + disasm(hex_value, pc=base))
             if base is not None:
                 base += 2 if not re.match(r"bl\s*\S", asm_input) else 4
-                addr_list.append(base)
-        addr_list = iter(addr_list)
-        base = next(addr_list)
-        for line in asm_list:
-            hex_value = assemble(line, pc=base)
-            formatted_value = f"{hex_value:0>4x}".ljust(9)
-            if base is not None: formatted_value = f"{base-4:0>8x}: " + formatted_value
-            print(formatted_value, disasm(hex_value, pc=base))
-            instr_size = 2 if hex_value < 0xF800F000 else 4
-            if base is not None: base = next(addr_list)
+        if inputstr: print()
+        for line in asm_list: print(line)
+def com_disasm(*args): print(disasm(*map(expeval, args)))
+def com_fbounds(addr):
+    if ROM: 
+        start, end, count = functionBounds(expeval(addr))
+        print(f"(${start:0>8x}, ${end:0>8x}, count={count})")
+    else: print("No ROM loaded")
 def com_if(command):
     condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
+    if ".." in command: command = iter(command.split(".."))
     if expeval(condition): Commandque.append(command)
 def com_while(command):
     condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
-    Commandque.append((condition, command))
-def com_repeat(command):
-    count, args = re.match(r"(\w+?)\s*:\s*(.+)", command).groups()
-    Commandque.extend([args, expeval(count)])
+    if ".." in command: command = command.split("..")
+    def loop():
+        while expeval(condition): yield command
+    Commandque.append(loop())
+def com_repeat(command, group=None):
+    count, command = re.match(r"(\w+?)\s*:\s*(.+)", command).groups()
+    count = expeval(count)
+    if ".." in command: command = command.split("..")
+    def loop():
+        for i in range(count): yield command
+    Commandque.append(loop())
 def com_def(defstring):
     name, args = re.match(r"def\s+(.+?)\s*:\s*(.+)", defstring).groups()
     UserFuncs[name] = [s.strip() for s in args.split(";")]
-def com_tree(address, depth=0): generateFuncList(expeval(address), expeval(depth))
+def com_tree(address, depth=0): 
+    if ROM: generateFuncList(expeval(address), expeval(depth))
+    else: print("No ROM loaded")
 def com_save(identifier="PRIORSTATE"): 
     LocalSaves[identifier] = RAM.copy(), REG.copy()
     print(f"Saved to {identifier}")
@@ -465,28 +547,15 @@ def com_exportstate(filepath=''):
     with gzip.open(filepath,"wb") as f: f.write(RAM)
     print("State saved to " + filepath)
 def com_output(condition):
-    global OutputHandle, OutputCondition, TerminalHandle, print, input
+    global OutputHandle, OutputCondition
     if condition.lower() in {"close", "false", "none"}: 
         OutputCondition = False
         if OutputHandle: OutputHandle.close()
         print("Outputfile closed")
-    elif condition == "clear": open(OUTPUTFILE,"w").close(); OutputHandle.seek(0)
-    elif condition == "terminal":
-        if not TerminalHandle:
-            print("Terminal bound to " + TERMINALFILE)
-            TerminalHandle = open(TERMINALFILE, "w")
-            def print(*args, printinit = print, **keywords):
-                printinit(*args, **keywords)
-                TerminalHandle.write(" ".join(args) + "\n")
-            FunctionFlow.print = print
-            def input(prompt, inputinit = input):
-                out = inputinit(prompt)
-                TerminalHandle.write(prompt + out + "\n")
-                return out
-        else: 
-            TerminalHandle = None
-            del print, FunctionFlow.print, input
-            print("Terminal unbound from " + TERMINALFILE)
+    elif condition == "clear": 
+        open(OUTPUTFILE,"w").close()
+        if OutputHandle: OutputHandle.seek(0)
+        print("Cleared data in " + OUTPUTFILE)
     else:
         if not OutputHandle: 
             OutputHandle = open(OUTPUTFILE,"w+")
@@ -496,16 +565,41 @@ def com_output(condition):
         if condition.lower() in {"", "true"}: OutputCondition = True
         else: OutputCondition = condition
         print("Outputting to " + OUTPUTFILE)
+def com_terminal(command="Toggle"):
+    global TerminalHandle, TerminalState, print, input
+    s = command.capitalize()
+    state = bool(TerminalHandle and not TerminalHandle.closed)
+    if s == "Toggle": s = str(not state)
+    elif s == "Clear":
+        print("Cleared data in " + TERMINALFILE)
+        TerminalHandle.flush(); open(TERMINALFILE,"w").close()
+        TerminalHandle.seek(0)
+    if s == "True" and not state:
+        if not TerminalHandle: TerminalHandle = open(TERMINALFILE, "w")
+        elif TerminalHandle.closed:
+            try: TerminalHandle = open(TERMINALFILE, "a")
+            except FileNotFoundError: open(TERMINALFILE, "w")
+        print("Terminal bound to " + TERMINALFILE)
+        TerminalState = True
+    elif s == "False" and state:
+        TerminalHandle.close()
+        TerminalState = False
+        print("Terminal unbound from " + TERMINALFILE)
 def com_format(command): 
     global OutputFormat
     OutputFormat = formatstr(re.match(r"format\s*:?\s*(.*)", command).group(1))
 def com_cls(): os.system("cls")
+def com_dir(path):
+    if not path: path = None
+    for name in os.listdir(path): print(name)
+def com_getcwd(): print(os.getcwd())
+def com_chdir(path): os.chdir(path)
 def com_help(): print(helptext[1:-1])
 def com_quit(): sys.exit()
 
 
 commands = {
-    "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "asm": com_asm, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, "def":com_def, "tree": com_tree, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, "output":com_output, "format":com_format, "cls":com_cls, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit
+    "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "asm": com_asm, "disasm": com_disasm, "fbounds": com_fbounds, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, "def":com_def, "tree": com_tree, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, "output":com_output, "terminal":com_terminal, "format":com_format, "cls":com_cls, "dir": com_dir, "getcwd": com_getcwd, "chdir":com_chdir, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit
 }
 
 
@@ -519,8 +613,9 @@ Modelist = {"@", "$", ">"}
 ProgramMode = ">"
 OutputFormat = formatstr(DefaultFormat)
 
-comtype1 = {"def", "format", "asm"}  # functions that use the entire command
-comtype2 = {"if", "while", "rep", "repeat", "importrom", "importstate", "exportstate", "output"}  # functions that only use the args
+comtype1 = {"def", "format", "asm"}  # uses the entire command
+comtype2 = {"if", "while", "rep", "repeat", "importrom", "importstate", "exportstate", "output", "dir", "chdir"}  # accepts line continuations
+comtype3 = {"b", "bw", "br", "bc", "d", "dw", "dr", "dc", "m"}  # doesn't split args
 
 UpdateCheck = None
 
@@ -531,18 +626,15 @@ while True:
     try:
         # User Input
         while Pause:
-            if Commandque: 
-                command = Commandque.pop()
+            if Commandque:
+                try: command = next(Commandque[-1])
+                except StopIteration: Commandque.pop(); continue
+                except TypeError: command = Commandque.pop()
+                if type(command) in (list, tuple): Commandque.append(iter(command)); continue
             else:
                 if OutputCondition: OutputHandle.flush()
-                if TerminalHandle: TerminalHandle.flush()
+                if TerminalState: TerminalHandle.flush()
                 command = input(ProgramMode + " ")
-            if type(command) is int:  # handles repeat loops
-                if command > 0: Commandque.append(command-1); command = Commandque[-2]
-                else: Commandque.pop(); continue
-            elif type(command) is tuple:  # handles while loops
-                if expeval(command[0]): Commandque.append(command); command = command[1]
-                else: continue
             command = command.strip()
             if REG[15:16] != UpdateCheck: UpdateGlobalInfo(); UpdateCheck = REG[15:16]  # Only updates if r15 or r16 have changed
             if command == "": command = lastcommand
@@ -555,18 +647,23 @@ while True:
                     break
                 except (KeyError, ValueError, IndexError): pass  # treat it like a normal command
             elif ProgramMode == "$":
-                try: print(eval(command))
-                except SyntaxError: exec(command)
+                try: 
+                    temp = eval(command)
+                    if temp is not None: print(temp)
+                except SyntaxError: 
+                    try: exec(command)
+                    except Exception as e: print(type(e).__name__, ":", e) 
                 continue
             name, args = Matchargs.match(command).groups()
             if name in comtype1: commands[name](command)
-            elif ";" in command: Commandque.extend(reversed(command.split(";")))
+            elif ";" in command: Commandque.append(iter(command.split(";")))
             elif name in comtype2: commands[name](args)
-            elif "\\" in command: Commandque.extend(reversed(command.split("\\")))
+            elif ".." in command: Commandque.append(iter(command.split("..")))
             elif Matchfunc.match(command):
-                if name in UserFuncs: Commandque.extend(reversed(UserFuncs[name]))
+                if name in UserFuncs: Commandque.append(iter(UserFuncs[name]))
                 else: print(expeval(command))
             elif Matchassign.search(command): assign(command)
+            elif name in comtype3: commands[name](args)
             elif name in commands:
                 if args: commands[name](*args.split(" "))
                 else: commands[name]()
@@ -611,6 +708,5 @@ while True:
         UpdateGlobalInfo()
     
     except SystemExit: sys.exit()
-    except: 
-        print(traceback.format_exc(), end="")
-        Pause = True
+    except: print(traceback.format_exc(), end=""); Pause = True
+

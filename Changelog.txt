@@ -1,0 +1,27 @@
+April 6th, 2020
+
+pre-compiled expstr and assign functions
+fixed bitmask error with bl and blh instructions
+added ability to store strings, can now use byte strings
+changed concatenation operator to ".."
+modified exec mode to make error messages nicer
+added comtype3 for functions that don't split args
+fixed assignment to m(...) types
+added &=, |=, ^=, %= to MatchAssign
+can now use iterators instead of reversed lists in commandque
+made assembler match letters instead of non-spaces
+improved code in com_asm
+separated terminal command from output command
+assembly commands now accept // and () line comments
+fixed assembler bug mistaking "add rn, 13/15" for "add rn, sp/pc"
+added assembler error message
+added fbounds command
+added disasm command
+capitalized addresses in disassembler
+added custom print and input functions for terminal binding
+can now specify default folders
+improved file system error messages
+added dir, getcwd, and chdir os commands
+Completely rewrote assembler, eliminating reliance on eval();
+  now has more than twice as many lines of code, but is 3 times faster
+made disassembler ignore 0xb600-0xbbff range
