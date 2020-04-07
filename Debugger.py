@@ -437,170 +437,174 @@ def assign(command, matchr=re.compile(r"r(\d+)$"), matchm=re.compile(r"m\(([^,]+
 
 # Console Commands
 
-def com_n(count=1): 
-    global Show, Pause, PauseCount
-    Show, Pause, PauseCount = True, False, expeval(count)
-def com_c(count=0):
-    global Show,Pause,PauseCount
-    Show,Pause,PauseCount = False, False, expeval(count)
-def com_b(addr):
-    if addr == "all":
-        print("BreakPoints: ", [f"{i:0>8X}" for i in sorted(BreakPoints)])
-        print("WatchPoints: ", [f"{i:0>8X}" for i in sorted(WatchPoints)])
-        print("ReadPoints:  ", [f"{i:0>8X}" for i in sorted(ReadPoints)])
-        print("Conditionals:", Conditionals)
-    else: BreakPoints.add(expeval(addr))
-def com_bw(addr): WatchPoints.add(expeval(addr))
-def com_br(addr): ReadPoints.add(expeval(addr))
-def com_bc(addr): Conditionals.append(expstr(addr))
-def com_d(addr):
-    if addr == "all": reset_breakpoints(); print("Deleted all breakpoints")
-    else: BreakPoints.remove(expeval(addr))
-def com_dw(addr): WatchPoints.remove(expeval(addr))
-def com_dr(addr): ReadPoints.remove(expeval(addr))
-def com_dc(addr): Conditionals.pop(expeval(addr))
-def com_i():
-    showreg()
-    print(f"Next: {ADDR:0>8X}: {INSTR:0>{2*SIZE}X}  {disasm(INSTR, MODE, PCNT)}")
-def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
-def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
-def com_m(command): 
-    if re.match(r"\(", command): print(expeval("m" + command))
-    else: hexdump(*map(expeval, command.split(" ")))
-def com_asm(command):
-    base, asm_string = re.match(r"asm\s*([^ :]*)\s*:?\s*(.*)", command).groups()
-    base = expeval(base) + 4 if base else None
-    if asm_string:
-        hex_value = assemble(asm_string, pc=base)
-        print(f"{hex_value:0>4x}  {disasm(hex_value, pc=base)}")
-    else:
-        asm_list = []
-        while True:
-            inputstr = f"{base-4:0>8x}: " if base is not None else ""
-            asm_input = input(inputstr)
-            if not asm_input: break
-            hex_value = assemble(asm_input, pc=base)
-            asm_list.append(inputstr + f"{hex_value:0>4x}".ljust(10) + disasm(hex_value, pc=base))
-            if base is not None:
-                base += 2 if not re.match(r"bl\s*\S", asm_input) else 4
-        if inputstr: print()
-        for line in asm_list: print(line)
-def com_disasm(*args): print(disasm(*map(expeval, args)))
-def com_fbounds(addr):
-    if ROM: 
-        start, end, count = functionBounds(expeval(addr))
-        print(f"(${start:0>8x}, ${end:0>8x}, count={count})")
-    else: print("No ROM loaded")
-def com_if(command):
-    condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
-    if ".." in command: command = iter(command.split(".."))
-    if expeval(condition): Commandque.append(command)
-def com_while(command):
-    condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
-    if ".." in command: command = command.split("..")
-    def loop():
-        while expeval(condition): yield command
-    Commandque.append(loop())
-def com_repeat(command, group=None):
-    count, command = re.match(r"(\w+?)\s*:\s*(.+)", command).groups()
-    count = expeval(count)
-    if ".." in command: command = command.split("..")
-    def loop():
-        for i in range(count): yield command
-    Commandque.append(loop())
-def com_def(defstring):
-    name, args = re.match(r"def\s+(.+?)\s*:\s*(.+)", defstring).groups()
-    UserFuncs[name] = [s.strip() for s in args.split(";")]
-def com_tree(address, depth=0): 
-    if ROM: generateFuncList(expeval(address), expeval(depth))
-    else: print("No ROM loaded")
-def com_save(identifier="PRIORSTATE"): 
-    LocalSaves[identifier] = RAM.copy(), REG.copy()
-    print(f"Saved to {identifier}")
-def com_load(identifier="PRIORSTATE"): 
-    RAM[:] = LocalSaves[identifier][0].copy()
-    REG[:] = LocalSaves[identifier][1].copy()
-    UpdateGlobalInfo()
-    print(f"Loaded {identifier}")
-def com_dv(identifier): del UserVars[identifier]
-def com_df(identifier): del UserFuncs[identifier]
-def com_ds(identifier="PRIORSTATE"): del LocalSaves[identifier]
-def com_vars(): print(UserVars)
-def com_funcs():
-    out = []
-    for k,v in UserFuncs.items(): out.append(f"'{k}': {'; '.join(v)}")
-    print("{" + "\n ".join(out) + "}")
-def com_saves(): print(list(LocalSaves))
-def com_importrom(filepath): 
-    global ROMPATH
-    ROMPATH = filepath.strip('"')
-    importrom(ROMPATH)
-    print("ROM loaded successfully")
-def com_importstate(filepath): 
-    global STATEPATH
-    STATEPATH = filepath.strip('"')
-    importstate(STATEPATH)
-    print("State loaded successfully")
-def com_exportstate(filepath=''):
-    if filepath == '': filepath = STATEPATH
-    for i in range(17): RAM[24+4*i : 28+4*i] = int.to_bytes(REG[i], 4, "little")
-    with gzip.open(filepath,"wb") as f: f.write(RAM)
-    print("State saved to " + filepath)
-def com_output(condition):
-    global OutputHandle, OutputCondition
-    if condition.lower() in {"close", "false", "none"}: 
-        OutputCondition = False
-        if OutputHandle: OutputHandle.close()
-        print("Outputfile closed")
-    elif condition == "clear": 
-        open(OUTPUTFILE,"w").close()
-        if OutputHandle: OutputHandle.seek(0)
-        print("Cleared data in " + OUTPUTFILE)
-    else:
-        if not OutputHandle: 
-            OutputHandle = open(OUTPUTFILE,"w+")
-        elif OutputHandle.closed:
-            try: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
-            except FileNotFoundError: OutputHandle = open(OUTPUTFILE,"w+")
-        if condition.lower() in {"", "true"}: OutputCondition = True
-        else: OutputCondition = condition
-        print("Outputting to " + OUTPUTFILE)
-def com_terminal(command="Toggle"):
-    global TerminalHandle, TerminalState, print, input
-    s = command.capitalize()
-    state = bool(TerminalHandle and not TerminalHandle.closed)
-    if s == "Toggle": s = str(not state)
-    elif s == "Clear":
-        print("Cleared data in " + TERMINALFILE)
-        TerminalHandle.flush(); open(TERMINALFILE,"w").close()
-        TerminalHandle.seek(0)
-    if s == "True" and not state:
-        if not TerminalHandle: TerminalHandle = open(TERMINALFILE, "w")
-        elif TerminalHandle.closed:
-            try: TerminalHandle = open(TERMINALFILE, "a")
-            except FileNotFoundError: open(TERMINALFILE, "w")
-        print("Terminal bound to " + TERMINALFILE)
-        TerminalState = True
-    elif s == "False" and state:
-        TerminalHandle.close()
-        TerminalState = False
-        print("Terminal unbound from " + TERMINALFILE)
-def com_format(command): 
-    global OutputFormat
-    OutputFormat = formatstr(re.match(r"format\s*:?\s*(.*)", command).group(1))
-def com_cls(): os.system("cls")
-def com_dir(path):
-    if not path: path = None
-    for name in os.listdir(path): print(name)
-def com_getcwd(): print(os.getcwd())
-def com_chdir(path): os.chdir(path)
-def com_help(): print(helptext[1:-1])
-def com_quit(): sys.exit()
+def getConsoleCommands():
+    def com_n(count=1): 
+        global Show, Pause, PauseCount
+        Show, Pause, PauseCount = True, False, expeval(count)
+    def com_c(count=0):
+        global Show,Pause,PauseCount
+        Show,Pause,PauseCount = False, False, expeval(count)
+    def com_b(addr):
+        if addr == "all":
+            print("BreakPoints: ", [f"{i:0>8X}" for i in sorted(BreakPoints)])
+            print("WatchPoints: ", [f"{i:0>8X}" for i in sorted(WatchPoints)])
+            print("ReadPoints:  ", [f"{i:0>8X}" for i in sorted(ReadPoints)])
+            print("Conditionals:", Conditionals)
+        else: BreakPoints.add(expeval(addr))
+    def com_bw(addr): WatchPoints.add(expeval(addr))
+    def com_br(addr): ReadPoints.add(expeval(addr))
+    def com_bc(addr): Conditionals.append(expstr(addr))
+    def com_d(addr):
+        if addr == "all": reset_breakpoints(); print("Deleted all breakpoints")
+        else: BreakPoints.remove(expeval(addr))
+    def com_dw(addr): WatchPoints.remove(expeval(addr))
+    def com_dr(addr): ReadPoints.remove(expeval(addr))
+    def com_dc(addr): Conditionals.pop(expeval(addr))
+    def com_i():
+        showreg()
+        print(f"Next: {ADDR:0>8X}: {INSTR:0>{2*SIZE}X}  {disasm(INSTR, MODE, PCNT)}")
+    def com_dist(addr,count=1): disT(expeval(addr), expeval(count))
+    def com_disa(addr,count=1): disA(expeval(addr), expeval(count))
+    def com_m(command): 
+        if re.match(r"\(", command): print(expeval("m" + command))
+        else: hexdump(*map(expeval, command.split(" ")))
+    def com_asm(command):
+        base, asm_string = re.match(r"asm\s*([^ :]*)\s*:?\s*(.*)", command).groups()
+        base = expeval(base) + 4 if base else None
+        if asm_string:
+            hex_value = assemble(asm_string, pc=base)
+            print(f"{hex_value:0>4x}  {disasm(hex_value, pc=base)}")
+        else:
+            asm_list = []
+            while True:
+                inputstr = f"{base-4:0>8x}: " if base is not None else ""
+                asm_input = input(inputstr)
+                if not asm_input: break
+                hex_value = assemble(asm_input, pc=base)
+                asm_list.append(inputstr + f"{hex_value:0>4x}".ljust(10) + disasm(hex_value, pc=base))
+                if base is not None:
+                    base += 2 if not re.match(r"bl\s*\S", asm_input) else 4
+            if inputstr: print()
+            for line in asm_list: print(line)
+    def com_disasm(*args): print(disasm(*map(expeval, args)))
+    def com_fbounds(addr):
+        if ROM: 
+            start, end, count = functionBounds(expeval(addr))
+            print(f"(${start:0>8x}, ${end:0>8x}, count={count})")
+        else: print("No ROM loaded")
+    def com_if(command):
+        condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
+        if ".." in command: command = iter(command.split(".."))
+        if expeval(condition): Commandque.append(command)
+    def com_while(command):
+        condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
+        if ".." in command: command = command.split("..")
+        def loop():
+            while expeval(condition): yield command
+        Commandque.append(loop())
+    def com_repeat(command, group=None):
+        count, command = re.match(r"(\w+?)\s*:\s*(.+)", command).groups()
+        count = expeval(count)
+        if ".." in command: command = command.split("..")
+        def loop():
+            for i in range(count): yield command
+        Commandque.append(loop())
+    def com_def(defstring):
+        name, args = re.match(r"def\s+(.+?)\s*:\s*(.+)", defstring).groups()
+        UserFuncs[name] = [s.strip() for s in args.split(";")]
+    def com_tree(address, depth=0): 
+        if ROM: generateFuncList(expeval(address), expeval(depth))
+        else: print("No ROM loaded")
+    def com_save(identifier="PRIORSTATE"): 
+        LocalSaves[identifier] = RAM.copy(), REG.copy()
+        print(f"Saved to {identifier}")
+    def com_load(identifier="PRIORSTATE"): 
+        RAM[:] = LocalSaves[identifier][0].copy()
+        REG[:] = LocalSaves[identifier][1].copy()
+        UpdateGlobalInfo()
+        print(f"Loaded {identifier}")
+    def com_dv(identifier): del UserVars[identifier]
+    def com_df(identifier): del UserFuncs[identifier]
+    def com_ds(identifier="PRIORSTATE"): del LocalSaves[identifier]
+    def com_vars(): print(UserVars)
+    def com_funcs():
+        out = []
+        for k,v in UserFuncs.items(): out.append(f"'{k}': {'; '.join(v)}")
+        print("{" + "\n ".join(out) + "}")
+    def com_saves(): print(list(LocalSaves))
+    def com_importrom(filepath): 
+        global ROMPATH
+        ROMPATH = filepath.strip('"')
+        importrom(ROMPATH)
+        print("ROM loaded successfully")
+    def com_importstate(filepath): 
+        global STATEPATH
+        STATEPATH = filepath.strip('"')
+        importstate(STATEPATH)
+        print("State loaded successfully")
+    def com_exportstate(filepath=''):
+        if filepath == '': filepath = STATEPATH
+        for i in range(17): RAM[24+4*i : 28+4*i] = int.to_bytes(REG[i], 4, "little")
+        with gzip.open(filepath,"wb") as f: f.write(RAM)
+        print("State saved to " + filepath)
+    def com_output(condition):
+        global OutputHandle, OutputCondition
+        if condition.lower() in {"close", "false", "none"}: 
+            OutputCondition = False
+            if OutputHandle: OutputHandle.close()
+            print("Outputfile closed")
+        elif condition == "clear": 
+            open(OUTPUTFILE,"w").close()
+            if OutputHandle: OutputHandle.seek(0)
+            print("Cleared data in " + OUTPUTFILE)
+        else:
+            if not OutputHandle: 
+                OutputHandle = open(OUTPUTFILE,"w+")
+            elif OutputHandle.closed:
+                try: OutputHandle = open(OUTPUTFILE,"r+"); OutputHandle.seek(0,2)
+                except FileNotFoundError: OutputHandle = open(OUTPUTFILE,"w+")
+            if condition.lower() in {"", "true"}: OutputCondition = True
+            else: OutputCondition = condition
+            print("Outputting to " + OUTPUTFILE)
+    def com_terminal(command="Toggle"):
+        global TerminalHandle, TerminalState, print, input
+        s = command.capitalize()
+        state = bool(TerminalHandle and not TerminalHandle.closed)
+        if s == "Toggle": s = str(not state)
+        elif s == "Clear":
+            print("Cleared data in " + TERMINALFILE)
+            TerminalHandle.flush(); open(TERMINALFILE,"w").close()
+            TerminalHandle.seek(0)
+        if s == "True" and not state:
+            if not TerminalHandle: TerminalHandle = open(TERMINALFILE, "w")
+            elif TerminalHandle.closed:
+                try: TerminalHandle = open(TERMINALFILE, "a")
+                except FileNotFoundError: open(TERMINALFILE, "w")
+            print("Terminal bound to " + TERMINALFILE)
+            TerminalState = True
+        elif s == "False" and state:
+            TerminalHandle.close()
+            TerminalState = False
+            print("Terminal unbound from " + TERMINALFILE)
+    def com_format(command): 
+        global OutputFormat
+        OutputFormat = formatstr(re.match(r"format\s*:?\s*(.*)", command).group(1))
+    def com_cls(): os.system("cls")
+    def com_dir(path):
+        if not path: path = None
+        for name in os.listdir(path): print(name)
+    def com_getcwd(): print(os.getcwd())
+    def com_chdir(path): os.chdir(path)
+    def com_help(): print(helptext[1:-1])
+    def com_quit(): sys.exit()
 
+    commandlist = locals()
+    commandlist = zip(map(lambda x: x[4:], commandlist.keys()), commandlist.values())  # removes the "com_"
+    aliases = {"rep": com_repeat, "?": com_help, "exit": com_quit}
+    return dict(commandlist, **aliases)
 
-commands = {
-    "n":com_n, "c":com_c, "b":com_b, "bw":com_bw, "br":com_br, "bc":com_bc, "d":com_d, "dw":com_dw, "dr":com_dr, "dc":com_dc, "i":com_i, "dist":com_dist, "disa":com_disa, "m":com_m, "asm": com_asm, "disasm": com_disasm, "fbounds": com_fbounds, "if": com_if, "while":com_while, "rep":com_repeat, "repeat":com_repeat, "def":com_def, "tree": com_tree, "save":com_save, "load":com_load, "dv":com_dv, "df":com_df, "ds":com_ds, "vars":com_vars, "funcs":com_funcs, "saves":com_saves, "importrom":com_importrom, "importstate":com_importstate, "exportstate":com_exportstate, "reset":reset, "output":com_output, "terminal":com_terminal, "format":com_format, "cls":com_cls, "dir": com_dir, "getcwd": com_getcwd, "chdir":com_chdir, "help":com_help, "?":com_help, "quit":com_quit, "exit":com_quit
-}
+    
+commands = getConsoleCommands()
 
 
 Show = True
