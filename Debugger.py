@@ -600,7 +600,7 @@ def getConsoleCommands():
 
     commandlist = locals()
     commandlist = zip(map(lambda x: x[4:], commandlist.keys()), commandlist.values())  # removes the "com_"
-    aliases = {"rep": com_repeat, "?": com_help, "exit": com_quit}
+    aliases = {"rep": com_repeat, "?": com_help, "exit": com_quit, "reset":reset}
     return dict(commandlist, **aliases)
 
     
@@ -647,9 +647,8 @@ while True:
             if ProgramMode == "@":
                 try: 
                     SETINSTR = assemble(command, REG[15] + 2*MODE)
-                    Show = ShowRegistersInAsmMode
-                    break
-                except (KeyError, ValueError, IndexError): pass  # treat it like a normal command
+                    Show = ShowRegistersInAsmMode; break
+                except (ValueError, KeyError): pass  # treat it like a normal command
             elif ProgramMode == "$":
                 try: 
                     temp = eval(command)
