@@ -82,13 +82,13 @@ def DMA():
 
 
 def compare(Op1,Op2,S=1):
-    result = (Op1 & 0xFFFFFFFF) + (Op2 & 0xFFFFFFFF)
-    sign1 = Op1 >> 30
-    sign2 = Op2 >> 30
+    Op1 &= 0xFFFFFFFF
+    Op2 &= 0xFFFFFFFF
+    result = Op1 + Op2
     N = 8 if result & 2**31 else 0
     Z = 4 if not result & 0xFFFFFFFF else 0
     C = 2 if result & 2**32 else 0
-    V = 1 if sign1 == sign2 != N else 0
+    V = 1 if (Op1 >> 31 == Op2 >> 31) == bool(N) else 0
     if S: REG[16] = (N|Z|C|V) << 28 | REG[16] & 2**28-1
     return result & 0xFFFFFFFF
 
