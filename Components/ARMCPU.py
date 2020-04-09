@@ -105,22 +105,22 @@ def barrelshift(value,Shift,Typ,S=0):
     value &= 0xFFFFFFFF
     Shift &= 31
     affectedflags = 0xE << 28
+    C = 0
     if Shift: 
-        C = 2*min(1, value & 1 << Shift-1)
-        if Typ == 0: value <<= Shift; C = value >> 32 & 1
+        C = 2*((value >> Shift-1) & 1)  # The last bit shifted out for rshifts
+        if Typ == 0: value <<= Shift; C = 2*(value >> 32 & 1)
         elif Typ == 1: value >>= Shift
         elif Typ == 2: value = (value ^ 2**31) - 2**31 >> Shift
         elif Typ == 3: value = (value << 32 | value) >> Shift
     else:
-        C = 2*(value>>31)
-        if Typ == 0: affectedflags = 0xC << 28; C = 0
-        elif Typ == 1: value = 0
-        elif Typ == 2: value = -(value>>31)
-        elif Typ == 3: value = ((REG[16] & 1<<29) << 3 | value) >> 1
+        if Typ == 0: affectedflags = 0xC << 28
+        elif Typ == 1: C = 2*(value>>31); value = 0
+        elif Typ == 2: C = 2*(value>>31); value = -(value>>31)
+        elif Typ == 3: affectedflags = 0xC << 28; value = ((REG[16] & 1<<29) << 3 | value) >> 1
     value &= 0xFFFFFFFF
     N = 8 if value & 2**31 else 0
     Z = 4 if not value else 0
-    if S: REG[16] = REG[16] & ~affectedflags | (N|Z|C) << 28
+    if S: REG[16] = REG[16] & ~affectedflags | ((N|Z|C) << 28) & affectedflags
     return value
 
 
