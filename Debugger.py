@@ -648,7 +648,10 @@ while True:
                 try: 
                     SETINSTR = assemble(command, REG[15] + 2*MODE)
                     Show = ShowRegistersInAsmMode; break
-                except (ValueError, KeyError): pass  # treat it like a normal command
+                except Exception as e: 
+                    if type(e) in {KeyError, ValueError, AttributeError}: # probably a normal command
+                        pass  # KeyError = name not in thumbfuncs; ValueError = r0 = 1; AttributeError = $..n
+                    else: print(type(e).__name__ + ":", e); continue
             elif ProgramMode == "$":
                 try: 
                     temp = eval(command)
