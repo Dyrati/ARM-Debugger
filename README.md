@@ -84,7 +84,7 @@ In [Execution Mode](#execution-mode), these and any other global variables may b
 You can also modify variables with compound assignment operators. (+=, -=, \*=, etc).  `m(r1) += r2`  
 Expressions may include any combination of variables and mathematical operations.  
 Expressions may be typed directly into to the console to print their value.  
-Hexadecimal numbers must be preceded by "0x", "$", or "x". 
+Hexadecimal numbers must be preceded by "0x" or "$". 
 ```
 base = $08000000
 m(base + 0xc, 8) = 4*r0 + r1*r2 - m(r3)//4
