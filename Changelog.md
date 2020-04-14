@@ -1,3 +1,20 @@
+### April 13th, 2020
+
+- Fixed Overflow Flag calculation bug
+- Modified error handling of Assembler
+- Made assign not break with "=" sign in string
+- Removed replacement of x with 0x
+- Added ability to read/write BIOS
+- Swapped replacement order in expstr_compile
+- Added -out parameter to asm command, to store bytes of instructions
+- Reworked strings to accept single quotes and escape sequences
+- Added multi-byte disasm commands
+- Made m command's 2nd argument be bytecount instead of element count
+- Changed default arguments of m command
+- Fixed "FileNotFound" error for default outputs
+- Added option to display function with fbounds command
+
+
 ### April 6th, 2020
 
 - pre-compiled expstr and assign functions
@@ -25,4 +42,3 @@
 - Completely rewrote assembler, eliminating reliance on eval();
   - now has more than twice as many lines of code, but is 3 times faster
 - made disassembler ignore 0xb600-0xbbff range
-- made console commands exclusive to the "commands" table; no longer in the global table

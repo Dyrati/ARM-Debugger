@@ -283,4 +283,4 @@ def assemble(instr, pc=None):
         return globals()["thumb_" + name](*inputs)
     elif name in BarrelShift: return thumb_shift(args)
     elif name in ConditionalBranches: return thumb_b_if(args, types, pc)
-    else: raise KeyError(name + " not recognized")
+    else: raise KeyError(f"'{name}' not recognized")

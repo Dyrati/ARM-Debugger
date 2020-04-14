@@ -2,21 +2,25 @@ import re
 from bisect import bisect_right
 
 
-RAM, ROM = bytearray(), bytearray()
+BIOS, RAM, ROM = bytearray(), bytearray(), bytearray()
 RegionMarkers = {}
 suffixes = ["eq","ne","cs","cc","mi","pl","vs","vc","hi","ls","ge","lt","gt","le","","nv"]
 
 
 def mem_read(addr,size=4):
     region = addr >> 24 & 0xF
-    if region >= 8:
-        reladdr = addr - 0x08000000
-        value = int.from_bytes(ROM[reladdr:reladdr+size],"little")  
-    else:
+    if region in RegionMarkers:
         base, length = RegionMarkers[region]
         reladdr = (addr & 0xFFFFFF) % length + base
-        value = int.from_bytes(RAM[reladdr:reladdr + size],"little")
-    return value
+        return int.from_bytes(RAM[reladdr:reladdr + size],"little")
+    else:
+        if region >= 8:
+            reladdr = addr - 0x08000000
+            return int.from_bytes(ROM[reladdr:reladdr+size],"little")  
+        elif region == 0:
+            reladdr = addr % 0x4000
+            return int.from_bytes(BIOS[reladdr:reladdr+size],"little")
+        else: return 0
 
 
 ThumbBounds = (
@@ -124,7 +128,7 @@ ArmDisasmTree = {
     9:[],
     10:[(("stm","ldm"),1<<20), (("da","ia","db","ib"),3<<23), ["c"], (" r{0}",15<<16), (("","!"),1<<21), ", {", 
         ["rlist({0})",0xFFFF], "}", (("","^"),1<<22)],
-    11:[(("b","bl"),1<<24), ["c"], " $", ["(pc if pc != None else 8) + (({0}^2**23)-2**23)*4",0xFFFFFF,"addr"]],
+    11:[(("b","bl"),1<<24), ["c"], " $", ["(pc if pc is not None else 8) + (({0}^2**23)-2**23)*4",0xFFFFFF,"addr"]],
     12:["cdp", ["'2' if c == 'nv' else c"], (" p{0}, #{1}, c{2}, c{3}, c{4}, #{5}", 15<<8, 15<<20, 15<<12, 15<<16, 15, 7<<5)],
     13:[(("stc","ldc"),1<<20), ["'2' if c == 'nv' else ''"], (("","l"),1<<22), ["c if c != 'nv' else ''"], 
         (" p{0}, c{1}, [r{2}", 15<<8, 15<<12, 15<<16), (24,2), "]", ", ", (("-",""),1<<23), "0x", ["4*{0}",255,"x"], 

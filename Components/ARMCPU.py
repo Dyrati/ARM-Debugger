@@ -1,7 +1,7 @@
 from bisect import bisect_right
 
 
-RAM, ROM = bytearray(), bytearray()
+BIOS, RAM, ROM = bytearray(), bytearray(), bytearray()
 REG = [0]*17
 RegionMarkers = {}
 BreakState = ""
@@ -17,14 +17,18 @@ def undef(*args): pass
 
 def mem_read(addr,size=4,signed=False):
     region = addr >> 24 & 0xF
-    if region >= 8:
-        reladdr = addr - 0x08000000
-        value = int.from_bytes(ROM[reladdr:reladdr+size],"little")
-    elif region not in RegionMarkers: return 0
-    else:
+    if region in RegionMarkers:
         base, length = RegionMarkers[region]
         reladdr = (addr & 0xFFFFFF) % length + base
         value = int.from_bytes(RAM[reladdr:reladdr + size],"little")
+    else:
+        if region >= 8:
+            reladdr = addr - 0x08000000
+            value = int.from_bytes(ROM[reladdr:reladdr+size],"little")
+        elif region == 0:
+            reladdr = addr % 0x4000
+            value = int.from_bytes(BIOS[reladdr:reladdr+size],"little")
+        else: return 0
     if signed:
         msb = 2**(8*size-1)
         value = ((value^msb) - msb) & 0xFFFFFFFF
@@ -36,7 +40,6 @@ def mem_read(addr,size=4,signed=False):
 
 def mem_write(addr,data,size=4):
     region = addr >> 24 & 0xF
-    if region not in RegionMarkers: return 0
     if type(data) is int: data = int.to_bytes(data % 2**(8*size),size,"little")
     else: size = len(data)
     if addr in WatchPoints and Executing:
@@ -47,10 +50,14 @@ def mem_write(addr,data,size=4):
         base, length = RegionMarkers[region]
         reladdr = (addr & 0xFFFFFF) % length + base
         RAM[reladdr:reladdr+size] = data
-    elif region >= 8:
-        reladdr = addr - 0x08000000
-        ROM[reladdr:reladdr+size] = data
-    if RAM[RegionMarkers[4][0] + 0xDF] & 2**7: DMA()
+        if RAM[RegionMarkers[4][0] + 0xDF] & 2**7: DMA()
+    else:
+        if region >= 8:
+            reladdr = addr - 0x08000000
+            ROM[reladdr:reladdr+size] = data
+        elif region == 0:
+            reladdr = addr % 0x4000
+            BIOS[reladdr:reladdr+size] = data
 
 
 def mem_copy(src,des,size):

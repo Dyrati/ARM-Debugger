@@ -6,7 +6,7 @@ from Components.Disassembler import disasm
 from Components.Assembler import assemble
 from Components.FunctionFlow import generateFuncList, functionBounds
 
-VERSION_INFO = "Last Updated April 6th, 2020"
+VERSION_INFO = "Last Updated April 13th, 2020"
 print(f"VERSION INFO: {VERSION_INFO}")
 
 
@@ -36,6 +36,7 @@ DefaultFormat = "line"
 
 # Initialization #
 
+BIOS = bytearray(0x4000); ARMCPU.BIOS = BIOS; Disassembler.BIOS = BIOS
 RAM = bytearray(740322); ARMCPU.RAM = RAM; Disassembler.RAM = RAM
 ROM = bytearray(); ARMCPU.ROM = ROM; Disassembler.ROM = ROM; FunctionFlow.ROM = ROM
 REG = REG_INIT.copy(); ARMCPU.REG = REG
@@ -65,11 +66,15 @@ try:
     with open(r"Debugger_Settings.txt") as f:
         Settings = f.read()
         Setting_Sections = re.search(r"Directories:\s*(.*?)Global\sVars:\s*(.*?)Initial\sCommands:\s*\n(.*)", Settings, re.S).groups()
+        i = 0
         for line in Setting_Sections[0].split("\n"):
             if line:
                 identifier, filepath = re.search(r"(.*?)\s*=\s*\"?(.*?)\"?\s*$", line).groups()
-                if os.path.exists(filepath): globals()[identifier] = filepath
-                elif filepath: print(f"FileNotFoundError: \"{filepath}\"")
+                if i >= 2:
+                    if os.path.isdir(filepath): globals()[identifier] = filepath
+                    elif filepath: print(f"DirectoryNotFound: \"{filepath}\"")
+                else: globals()[identifier] = filepath
+                i += 1
         exec(Setting_Sections[1])
         for line in reversed(Setting_Sections[2].split("\n")[1:]):
             if line: Commandque.append(line)
@@ -104,6 +109,7 @@ def UpdateGlobalInfo():
 def reset():
     """Clears the RAM and resets the Registers"""
 
+    BIOS[:] = bytearray(0x4000)
     RAM[:] = bytearray(740322)
     REG[:] = REG_INIT
     UpdateGlobalInfo()
@@ -181,7 +187,7 @@ helptext = """
     i                               print the registers
     dist [addr] (count)             display *count* instructions starting from addr in THUMB
     disa [addr] (count)             display *count* instructions starting from addr in ARM
-    m [addr] (count) (size)         display the memory at addr (count=1, size=4 by default)
+    m [addr] (bytecount) (size)     display the memory at addr (bytecount=1, size=1 by default)
     asm (addr): (command)           assemble a command written in Thumb.  If *addr* is included, you can utilize 
                                         absolute address references, like "bl $08014878", or "ldr r0, [$08014894]"
                                         if *command* is omitted, it enters multiline mode
@@ -215,6 +221,8 @@ helptext = """
     importstate [filepath]          import a savestate
     exportstate (filepath)          save the current state to a file; filepath = (most recent import) by default
                                         will overwrite the destination, back up your saves!
+    exportrom (filepath)            save the current ROM to a file; filepath = (most recent import) by default
+                                        will overwrite the destination, back up your saves!                                    
     reset                           reset the emulator (clears the RAM and resets registers)
     output [condition]              when *condition* is True, outputs to "Debugger_Output.txt" every CPU instruction
                                         if *condition* is "clear", deletes all the data in "Debugger_Output.txt"
@@ -295,14 +303,14 @@ def cpsr_str(cpsr):
     return "[" + "".join(out) + "]"
 
 
-def hexdump(addr,count=1,size=4):
-    """Displays *count* elements of *size* bytes starting from *addr*"""
+def hexdump(addr,count=1,size=1):
+    """Displays *count* bytes starting from *addr*, grouped by *size*"""
 
     hexdata = f"{addr:0>8X}: "
     strdata = ""
     maxwidth = 0
     offset = 0
-    for i in range(count):
+    for i in range(count//size + (1 if count % size else 0)):
         value = mem_read(addr+offset, size)
         hexdata += f"{value:0>{2*size}X} "
         for j in range(size):
@@ -331,28 +339,29 @@ def showreg():
 
 expstr_compile = (
     (
-        (re.compile(r"\b[a-zA-Z]\w*(?!\'|\")"), lambda m: expstr_compile[2](m.group(), expstr_compile[1])),
         (re.compile(r"\$"), r"0x"),
         (re.compile(r"#"), r""),
-        (re.compile(r"\bx(\d+)"), r"0x\1"),
         (re.compile(r"\br(\d+)"), r"REG[\1]"),
         (re.compile(r"\bm\((.*?)\)"), r"mem_read(\1)"),
+        (re.compile(r"\b[a-zA-Z]\w*(?!\'|\")"), lambda m: expstr_compile[2](m.group(), expstr_compile[1])),
     ),
-    {"sp":"r13", "lr":"r14", "pc":"r15"},
+    {"sp":"REG[13]", "lr":"REG[14]", "pc":"REG[15]"},
     lambda m, reps: repr(UserVars[m]) if m in UserVars else reps[m] if m in reps else m,
+    re.compile(r"(.*?)((?:[brf]?(?:\'.*?\'|\".*?\"))|$)"),  # returns (non-string, string) pairs
 )
 
 def expstr(string):
     """Converts a user string into a string that can be called with eval()"""
     
     global expstr_compile
-    if '"' in string:
-        stringsplit = string.split('"')
-        for i in range(1, len(stringsplit), 2): 
-            stringsplit[i] = repr(stringsplit[i])
-        for i in range(0, len(stringsplit), 2):
-            for k,v in expstr_compile[0]: stringsplit[i] = k.sub(v,stringsplit[i])
-        return ''.join(stringsplit)
+    if '"' in string or "'" in string:
+        def subs(matchobj):
+            global expstr_compile
+            s = matchobj.group(1)
+            if s:
+                for k,v in expstr_compile[0]: s = k.sub(v,s)
+            return (s or "") + (matchobj.group(2) or "")
+        return expstr_compile[3].sub(subs, string)
     else:
         for k,v in expstr_compile[0]: string = k.sub(v,string)
         return string
@@ -413,7 +422,7 @@ def assign(command, matchr=re.compile(r"r(\d+)$"), matchm=re.compile(r"m\(([^,]+
     global assign_compile
     regnames, matchr, matchm, matchb, matchi = assign_compile
     op = Matchassign.search(command).group()
-    identifier,expression = command.split(op)
+    identifier,expression = re.match(f"(.*?)\{op}(.*)", command).groups()
     identifier = identifier.strip()
     expression = expstr(expression.strip())
     try: identifier = regnames[identifier]
@@ -469,29 +478,48 @@ def getConsoleCommands():
         if re.match(r"\(", command): print(expeval("m" + command))
         else: hexdump(*map(expeval, command.split(" ")))
     def com_asm(command):
-        base, asm_string = re.match(r"asm\s*([^ :]*)\s*:?\s*(.*)", command).groups()
-        base = expeval(base) + 4 if base else None
+        args, asm_string = re.match(r"asm\s*([^:]*):\s*(.*)", command).groups()
+        target = re.search(r"-(\S+)", args)
+        if target: target = target.group(1); args = re.sub(f"-{target}", "", args)
+        base = re.search(r"\S+", args)
+        if base: base = expeval(base.group()) + 4
         if asm_string:
             hex_value = assemble(asm_string, pc=base)
+            if target: UserVars[target] = int.to_bytes(hex_value, 2 if hex_value < 0xF800F000 else 4, "little")
             print(f"{hex_value:0>4X}  {disasm(hex_value, pc=base)}")
         else:
             asm_list = []
+            if target: UserVars[target] = b''
             while True:
                 inputstr = f"{base-4:0>8X}: " if base is not None else ""
                 asm_input = input(inputstr)
                 if not asm_input: break
-                hex_value = assemble(asm_input, pc=base)
-                asm_list.append(inputstr + f"{hex_value:0>4X}".ljust(10) + disasm(hex_value, pc=base))
+                try: hex_value = assemble(asm_input, pc=base)
+                except (KeyError, ValueError) as e: print(type(e).__name__+":", e); continue
+                if target: UserVars[target] += int.to_bytes(hex_value, 2 if hex_value < 0xF800F000 else 4, "little")
+                asm_list.append(f"{inputstr}{f'{hex_value:0>4X}':<8}  {disasm(hex_value, pc=base)}")
                 if base is not None:
-                    base += 2 if not re.match(r"bl\s*\S", asm_input) else 4
+                    base += 2 if hex_value < 0xF800F000 else 4
             if inputstr: print()
             for line in asm_list: print(line)
-    def com_disasm(*args): print(disasm(*map(expeval, args)))
-    def com_fbounds(addr):
-        if ROM: 
+    def com_disasm(*args): 
+        args = list(map(expeval, args))
+        if type(args[0]) is int: print(disasm(*args))
+        else:
+            pos = 0
+            if len(args) == 1: args += [1]
+            while pos < len(args[0]):
+                size = 2 if args[1] != 0 else 4
+                data = int.from_bytes(args[0][pos:pos+size], "little")
+                if args[1] == 1 and 0xF000 <= data < 0xF800: size = 4; data = int.from_bytes(args[0][pos:pos+size], "little")
+                print(f"{f'{data:0>4X}':<8}  {disasm(data, args[1])}")
+                pos += size
+    def com_fbounds(addr, show=""):
+        if ROM:
             start, end, count = functionBounds(expeval(addr))
+            if show: disT(start, count)
             print(f"(${start:0>8x}, ${end:0>8x}, count={count})")
-        else: print("No ROM loaded")
+        else: print("Error: No ROM loaded")
     def com_if(command):
         condition, command = re.match(r"(.+?)\s*:\s*(.+)", command).groups()
         if ".." in command: command = iter(command.split(".."))
@@ -547,6 +575,10 @@ def getConsoleCommands():
         for i in range(17): RAM[24+4*i : 28+4*i] = int.to_bytes(REG[i], 4, "little")
         with gzip.open(filepath,"wb") as f: f.write(RAM)
         print("State saved to " + filepath)
+    def com_exportrom(filepath=''):
+        if filepath == '': filepath = ROMPATH
+        with open(filepath,"wb") as f: f.write(ROM)
+        print("ROM saved to " + filepath)
     def com_output(condition):
         global OutputHandle, OutputCondition
         if condition.lower() in {"close", "false", "none"}: 
@@ -603,7 +635,7 @@ def getConsoleCommands():
     aliases = {"rep": com_repeat, "?": com_help, "exit": com_quit, "reset":reset}
     return dict(commandlist, **aliases)
 
-    
+
 commands = getConsoleCommands()
 
 
