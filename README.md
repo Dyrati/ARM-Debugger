@@ -43,11 +43,13 @@ That's pretty much all you need to get started.  The rest of this readme is just
 - `i` - print the CPU registers
 - `dist [addr] (count)` - display *count* THUMB instructions starting from *addr*
 - `disa [addr] (count)` - display *count* ARM instructions starting from *addr*
-- `m [addr] (count) (size)` - display *count* units of *size* bytes of memory at *addr* (count=1, size=4 by default)
-- `asm (addr): (command)` - assemble a command written in Thumb
+- `m [addr] (bytecount) (size)` - display *bytecount* bytes of memory at *addr* (count=1, size=1 by default)
+- `asm (-varname) (addr): (command)` - assemble a command written in Thumb
+    - if *varname* is included, the commands will be stored in the User Variable *varname* as a byte string
     - if *addr* is included, you can utilize absolute address references, like `bl $08014878` or `ldr r0, [$08014894]`
     - if *command* is omitted, it enters multiline mode, allowing you to paste multiple commands
 - `disasm [code]` - disassembles a single 16-bit number into a Thumb instruction
+    - if *code* is a byte string, this command can disassemble multiple instructions
 - `fbounds [addr]` - detects and displays the boundaries of the Thumb function containing *addr*
 
 **Enter in nothing to execute the previous command.**  
@@ -66,6 +68,7 @@ Assigning a value to registers and memory is just as easy
 ```
 r0 = test   # sets the actual register r0 equal to test
 m($02000000) = r0   # sets the memory at $02000000 equal to r0
+m($08000000) = bytestring  # using a bytestring, like b'example', you can easily overwite multiple bytes of memory
 ```
 Default variables are **r0-r16, sp, lr, pc,** and **m(*addr*, *size*)**.  (size=4 by default).  r16 is CPSR  
 There are also 4 global variables that may be accessed, but not directly modified:
@@ -122,15 +125,15 @@ If the command takes multiple arguments, then each expression must not contain s
 (using a semicolon will end the if/while/repeat instruction)  
 The commands may be anything, including function calls, loops, and even [Debugger Mode Swaps](#alternate-debugger-modes).
 ```
-> wram = $02000000; m wram 32 1
+> wram = $02000000; m wram 32
 02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
 02000010:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
-> iter = 0; rep 32: m(wram + iter) = iter .. iter += 1; m wram 32 1
+> iter = 0; rep 32: m(wram + iter) = iter .. iter += 1; m wram 32
 02000000:  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F   ................
 02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
 > def clear: iter = 0; while iter < arg1: m(arg0 + iter, 1) = 0 .. iter += 1
 > arg0 = wram; arg1 = 16; clear()
-> m wram 32 1
+> m wram 32
 02000000:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
 02000010:  10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F   ................
 > funcs
@@ -145,6 +148,9 @@ The commands may be anything, including function calls, loops, and even [Debugge
 - `importrom [filepath]` - import a rom into the debugger
 - `importstate [filepath]` - import a savestate
 - `exportstate (filepath)` - save the current state to a file; 
+    - *filepath* = (most recent import) by default
+    - will overwrite the destination, back up your saves!
+- `exportrom (filepath)` - save the current ROM to a file; 
     - *filepath* = (most recent import) by default
     - will overwrite the destination, back up your saves!
 - `reset` - reset the emulator (clears the RAM and resets the registers)
