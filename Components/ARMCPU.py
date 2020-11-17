@@ -108,7 +108,7 @@ def cmphalf(result,S=1):
     return result
 
 
-def barrelshift(value,Shift,Typ,S=0):
+def barrelshift(value,Shift,Typ,S=0,skipzero=False):
     value &= 0xFFFFFFFF
     Shift &= 31
     affectedflags = 0xE << 28
@@ -119,7 +119,7 @@ def barrelshift(value,Shift,Typ,S=0):
         elif Typ == 1: value >>= Shift
         elif Typ == 2: value = (value ^ 2**31) - 2**31 >> Shift
         elif Typ == 3: value = (value << 32 | value) >> Shift
-    else:
+    elif not skipzero:
         if Typ == 0: affectedflags = 0xC << 28
         elif Typ == 1: C = 2*(value>>31); value = 0
         elif Typ == 2: C = 2*(value>>31); value = -(value>>31)
@@ -145,7 +145,7 @@ conditions = (
     lambda cpsr: cpsr & 9 in {0,9},         # GE: N=V
     lambda cpsr: cpsr & 9 not in {0,9},     # LT: N!=V
     lambda cpsr: cpsr & 13 in {0,9},        # GT: Z=0 and N=V
-    lambda cpsr: cpsr & 13 in {5,12},       # LE: Z=1 and N!=V
+    lambda cpsr: cpsr & 13 not in {0,9},    # LE: Z=1 or N!=V
     lambda cpsr: True,                      # AL: Always true
     lambda cpsr: False,                     # NV: Never true
 )
@@ -181,9 +181,9 @@ def immediate(instr):
 alu_ops = (
     lambda Rd,Rs: cmphalf(Rd & Rs),                        # AND
     lambda Rd,Rs: cmphalf(Rd ^ Rs),                        # XOR
-    lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,0,1),           # LSL
-    lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,1,1),           # LSR
-    lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,2,1),           # ASR
+    lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,0,1,True),      # LSL
+    lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,1,1,True),      # LSR
+    lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,2,1,True),      # ASR
     lambda Rd,Rs: compare(Rd, Rs + (REG[16]>>29 & 1)),     # ADC
     lambda Rd,Rs: compare(Rd,-Rs + (REG[16]>>29 & 1) - 1), # SBC
     lambda Rd,Rs: barrelshift(Rd,Rs & 0x1F,3,1),           # ROR
@@ -215,6 +215,7 @@ def HiRegBx(instr):
         if Hd: REG[14] = REG[15] + 1
         REG[15] = REG[Rs] + 4-3*Mode
         REG[16] = REG[16] & ~(1<<5) | Mode << 5
+    if Rd == 15: REG[15] += 2
 
 
 def ldr_pc(instr):
@@ -277,7 +278,7 @@ def pushpop(instr):
         for i in Rlist:
             REG[i] = mem_read(REG[13], 4)
             REG[13] += 4
-        if REG[15] & 1: REG[15] += 1
+        if Rlist[-1] == 15: REG[15] = (REG[15] & ~1) + 2
     REG[13] &= 0xFFFFFFFF
 
 
@@ -361,7 +362,9 @@ def dataprocess(instr):
         if Imm2: Shift = REG[Shift>>1 & 15]
         Op2 = barrelshift(REG[Rm],Shift,Typ,S)
     result = dataprocess_list[OpCode](REG[Rn],Op2,S)
-    if not(8 <= OpCode <= 11): REG[Rd] = result
+    if not(8 <= OpCode <= 11):
+        REG[Rd] = result
+        if Rd == 15: REG[15] += 4
 
 
 def psr(instr):
@@ -386,7 +389,7 @@ def arm_bx(instr):
 
 
 def arm_branch(instr):
-    L, Offset = instr >> 24 & 1, instr & 0xFFFFFF
+    L, Offset = instr >> 24 & 1, (instr & 0xFFFFFF ^ 2**23) - 2**23
     if L: REG[14] = REG[15] - 4
     REG[15] = (REG[15] + 4 + Offset*4) & 0XFFFFFFFF
 

@@ -164,7 +164,8 @@ def disasm(instr, Mode=1, pc=None):
             T2 = type(arg1)
             if T2 is tuple: out += arg1[getsegment(arg2[0])]  # [(strings), bitmask] selects a string based on bitmask
             elif T2 is str: out += arg1.format(*map(lambda x:getsegment(x),arg2))  # [str, bitmasks] inserts bitmasks into str
-            elif T2 is int and getsegment(1<<arg1): index += arg2[0]  # if correct bit is on, jump
+            elif T2 is int:
+                if getsegment(1<<arg1): index += arg2[0]  # if correct bit is on, jump
             elif T2 is list:  # [bitmask, values] if bitmask is in values, jump
                 if getsegment(arg1[0]) in arg1[1:]: index += arg2[0]
         elif T is str: out += code  # adds str to output

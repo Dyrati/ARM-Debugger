@@ -1,3 +1,15 @@
+### November 17th, 2020
+- added search function: Searches BIOS, RAM, and ROM
+  - accepts integers, strings, and byte-like objects
+  - for integers, can optionally specify a byte count
+- spaces within quotation marks are no longer treated as separators
+- fixed instructions that modify pc directly
+- improved fbounds command, and added fboundsa for arm function boundaries
+- added "nn" command, which is like "n", but doesn't step into functions
+- modified "c" command; now you can specify an address to stop at
+- regular breakpoints now halt prior to execution
+
+
 ### April 13th, 2020
 
 - Fixed Overflow Flag calculation bug

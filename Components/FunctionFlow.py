@@ -1,5 +1,7 @@
 
+RAM = bytearray()
 ROM = bytearray()
+RegionMarkers = {}
 
 
 def bl_offset(data):
@@ -13,10 +15,17 @@ def minmax(bounds, entry):
     else: bounds.append(entry); bounds.sort()
 
 
-def mem_read(addr, size=2):
-    base = addr & 0xFFFFFF
-    return int.from_bytes(ROM[base:base+size], "little")
-    
+def mem_read(addr,size=2):
+    region = addr >> 24 & 0xF
+    if region in RegionMarkers:
+        base, length = RegionMarkers[region]
+        reladdr = (addr & 0xFFFFFF) % length + base
+        value = int.from_bytes(RAM[reladdr:reladdr + size],"little")
+    else:
+        reladdr = addr - 0x08000000
+        value = int.from_bytes(ROM[reladdr:reladdr+size],"little")
+    return value
+
 
 def generateFuncList(addr, depth=0):
     
@@ -95,38 +104,56 @@ def generateFuncList(addr, depth=0):
     print(s)
 
 
-def functionBounds(addr):
+def functionBounds(addr, mode=1):
     base = addr
-    value = mem_read(addr)
-    endfunc = False
-    while not(0xb500 <= value <= 0xb5ff): # search up for push {r0-r7, lr} instructions, or ends of functions
-        addr -= 2
-        value = mem_read(addr)
-        if 0xbd00 <= value <= 0xbdff or value == 0x4770: 
-            if endfunc: break
-            else: endfunc = True
+    instrsize = 2 if mode==1 else 4
+    value = mem_read(addr, instrsize)
+    endfunc = 0
+    if mode == 1:
+        startcheck = lambda x: x & 0xff00 == 0xb500
+        def endcheck(value):
+            if value & 0xff00 == 0xbd00:
+                return True
+            elif value & 0xff80 == 0x4700:
+                if value == 0x4770: return True
+                reg = (value >> 3) & 7
+                return mem_read(addr-2) & 0xffff == 0xbc00 | 2**reg
+            else:
+                return False
+    elif mode == 0:
+        startcheck = lambda x: x == 0x02004778 or x & 0x0F3F4000 == 0x092D4000
+        endcheck = lambda x: x == 0xE12FFF1E or x & 0x0FBF8000 == 0x08BD8000
+    while not startcheck(value): # search up for push {lr} instructions, or ends of functions
+        addr -= instrsize
+        value = mem_read(addr, instrsize)
+        if endcheck(value):
+            endfunc += 1
+            if endfunc == 2: break
     start = addr
     while True:
         blcount = 0
         datarange = []
         addr = start
-        value = mem_read(addr)
-        while not(0xbd00 <= value <= 0xbdff or value == 0x4770): # search down for pop {r0-r7, pc} or bx rn instructions
-            if 0xf000 <= value <= 0xf7ff: blcount += 1; addr += 2
-            elif 0x4800 <= value <= 0x4fff: minmax(datarange, (addr+4 & ~2) + 4*(value & 0xFF)) # update datarange for ldr rn, [pc, nn]
-            addr += 2
+        value = mem_read(addr, instrsize)
+        while not endcheck(value): # search down for pop {r0-r7, pc} or bx rn instructions
+            if mode == 1:
+                if value & 0xf800 == 0xf000: blcount += 1; addr += 2
+                elif value & 0xf800 == 0x4800: minmax(datarange, (addr+4 & ~2) + 4*(value & 0xFF)) # update datarange for ldr rn, [pc, nn]
+            elif mode == 0:
+                if value & 0x0E9F0000 == 0x049F0000:
+                    minmax(datarange, addr+8 + value & 0xFFF)
+            addr += instrsize
             if datarange and addr >= min(datarange):  # if addr has entered datarange, count bl instructions and branch
                 while addr < max(datarange) + 4:
-                    if 0xf800f800 & mem_read(addr, 4) == 0xf800f000: blcount += 1; addr += 4
-                    else: addr += 2
+                    if mode==1 and 0xf800f800 & mem_read(addr, 4) == 0xf800f000:
+                        blcount += 1; addr += 2
+                    addr += instrsize
                 datarange.clear()
-            value = mem_read(addr)
-            if 0x4700 <= value < 0x4770:  # checks if bx rn instruction was a return
-                reg = (value >> 3) & 7
-                if mem_read(addr-2) & (0xff00 | 1<<reg) == 0xbc00 | 1<<reg: break
+            value = mem_read(addr, instrsize)
         if addr >= base: break
         elif datarange: start = max(datarange) + 4
-        else: start = addr + 2
+        else: start = addr + instrsize
 
-    return start, addr, (addr-start)//2 + 1 - blcount  # start, end, count
-    
+    if mode==1: linecount = (addr-start)//2 + 1 - blcount
+    elif mode==0: linecount = (addr-start)//4 + 1
+    return start, addr, linecount

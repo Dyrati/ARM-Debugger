@@ -1,6 +1,13 @@
 import re
 
 
+Conditionals = ["eq","ne","cs","cc","mi","pl","vs","vc","hi","ls","ge","lt","gt","le"]
+AluOps = ["and","eor","lsl","lsr","asr","adc","sbc","ror","tst","neg","cmp","cmn","orr","mul","bic","mvn"]
+MultiTypes = {"add","sub","mov","str","strb","strh","ldr","ldrb","ldrh"}
+PC_Relative = {"ldr", "b", "bl"}
+BarrelShift = {"lsl", "lsr", "asr"}
+
+
 def extract(instr, matchi=re.compile(r"\s*([a-zA-Z]+)\s*(.*?(?=\(|//|$))"), matchb=re.compile(r"\[?{?(\w*)\]?}?"), 
             replacements={" ":"", "sp":"r13", "lr":"r14", "pc":"r15", "$":"0x", "#":""}):
 
@@ -13,7 +20,6 @@ def extract(instr, matchi=re.compile(r"\s*([a-zA-Z]+)\s*(.*?(?=\(|//|$))"), matc
     des = args
 
     for k,v in replacements.items(): instr = instr.replace(k,v)
-    instr = re.sub(r"\bx", "0x", instr)
     clist = instr.split(",")
     if not clist[0]: clist = []
 
@@ -26,8 +32,8 @@ def extract(instr, matchi=re.compile(r"\s*([a-zA-Z]+)\s*(.*?(?=\(|//|$))"), matc
                 value = value.replace("r","").split("-")
                 if len(value) == 1: reglist |= 2**int(value[0])
                 else: reglist |= 2**(int(value[1])+1)-2**int(value[0])
-        elif value[0] == "r": 
-            des.append((int(value.replace("!","")[1:]),str))
+        elif "r" in value:
+            des.append((int(value.replace("r","").replace("!","")),str))
         else: 
             try: des.append((int(value),int))
             except ValueError: des.append((int(value,16),int))
@@ -104,7 +110,7 @@ def thumb_cmp(args):
 
 def thumb_alu(args):
     out = 0x4000 | setbits(7, args[1]) | setbits(7<<3, args[2])
-    alu_op = ("and","eor","lsl","lsr","asr","adc","sbc","ror","tst","neg","cmp","cmn","orr","mul","bic","mvn").index(args[0])
+    alu_op = AluOps.index(args[0])
     out |= setbits(15<<6, alu_op)
     return out
 
@@ -237,7 +243,7 @@ def thumb_bkpt(args):
 
 def thumb_b_if(args, types, pc):
     out = 0xd000
-    bType = ("beq","bne","bcs","bcc","bmi","bpl","bvs","bvc","bhi","bls","bge","blt","bgt","ble").index(args[0])
+    bType = Conditionals.index(args[0][1:])
     out |= setbits(15<<8, bType) | setbits(0xff, (args[1]-pc)//2)
     return out
 
@@ -257,18 +263,11 @@ def thumb_blh(args):
     return 0xf800 | setbits(0x7ff, args[1]//2)
 
 
-ConditionalBranches = {"beq","bne","bcs","bcc","bmi","bpl","bvs","bvc","bhi","bls","bge","blt","bgt","ble"}
-AluOps = {"and","eor","lsl","lsr","asr","adc","sbc","ror","tst","neg","cmp","cmn","orr","mul","bic","mvn"}
-MultiTypes = {"add","sub","mov","str","strb","strh","ldr","ldrb","ldrh"}
-PC_Relative = {"ldr", "b", "bl"}
-BarrelShift = {"lsl", "lsr", "asr"}
-
-
 def assemble(instr, pc=None):
 
     """Converts assembly code into machine code"""
 
-    global ConditionalBranches, AluOps, MultiTypes, PC_Relative, BarrelShift
+    global Conditionals, AluOps, MultiTypes, PC_Relative, BarrelShift
     if pc == None: pc = 4
     args, types = extract(instr)
     name = args[0]
@@ -282,5 +281,5 @@ def assemble(instr, pc=None):
         if name in PC_Relative: inputs.append(pc)
         return globals()["thumb_" + name](*inputs)
     elif name in BarrelShift: return thumb_shift(args)
-    elif name in ConditionalBranches: return thumb_b_if(args, types, pc)
+    elif name[0]=="b" and name[1:] in Conditionals: return thumb_b_if(args, types, pc)
     else: raise KeyError(f"'{name}' not recognized")

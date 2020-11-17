@@ -1,4 +1,4 @@
-import os, sys, traceback, gzip, re
+import os, sys, traceback, gzip, re, math
 from Components import ARMCPU, Disassembler, FunctionFlow
 
 from Components.ARMCPU import mem_read, mem_write
@@ -6,7 +6,7 @@ from Components.Disassembler import disasm
 from Components.Assembler import assemble
 from Components.FunctionFlow import generateFuncList, functionBounds
 
-VERSION_INFO = "Last Updated April 13th, 2020"
+VERSION_INFO = "Last Updated November 17th, 2020"
 print(f"VERSION INFO: {VERSION_INFO}")
 
 
@@ -37,7 +37,7 @@ DefaultFormat = "line"
 # Initialization #
 
 BIOS = bytearray(0x4000); ARMCPU.BIOS = BIOS; Disassembler.BIOS = BIOS
-RAM = bytearray(740322); ARMCPU.RAM = RAM; Disassembler.RAM = RAM
+RAM = bytearray(740322); ARMCPU.RAM = RAM; Disassembler.RAM = RAM; FunctionFlow.RAM = RAM
 ROM = bytearray(); ARMCPU.ROM = ROM; Disassembler.ROM = ROM; FunctionFlow.ROM = ROM
 REG = REG_INIT.copy(); ARMCPU.REG = REG
 RegionMarkers = {  # Base, Length pairs
@@ -49,6 +49,7 @@ RegionMarkers = {  # Base, Length pairs
     7:(0x685df,0x68800)     # OAM
 }
 ARMCPU.RegionMarkers = RegionMarkers
+FunctionFlow.RegionMarkers = RegionMarkers
 Disassembler.RegionMarkers = RegionMarkers
 
 OutputHandle = None
@@ -86,6 +87,7 @@ except Exception as e: print(type(e).__name__ + ":", e, "in Debugger_Settings.tx
 Matchfunc = re.compile(r"(\w*)\(\)")  # user and global functions; matching args in parentheses breaks m(...) command
 Matchassign = re.compile(r"(?<![!=<>])(?:\+|-|\*|/|//|%|<<|>>|\*\*|&|\||\^)?=(?!=)")  # match assigment operators
 Matchargs = re.compile(r"([^ :(]+)\s*:?(.*)")  # grabs the debugger command and its arguments
+Matchquotes = re.compile(r"(.*?)((?:[brf]?(?:\'.*?\'|\".*?\"))|$)")  # returns (non-string, string) pairs
 
 
 def UpdateGlobalInfo():
@@ -103,7 +105,7 @@ def UpdateGlobalInfo():
     PCNT = REG[15] + SIZE
     ADDR = (REG[15] - SIZE) & ~(SIZE-1)
     INSTR = mem_read(ADDR,SIZE)
-    if MODE and 0xF000 <= INSTR < 0xF800: INSTR = mem_read(ADDR,4); SIZE = 4
+    if MODE and INSTR & 0xF800 == 0xF000: INSTR = mem_read(ADDR,4); SIZE = 4
 
 
 def reset():
@@ -175,10 +177,11 @@ helptext = """
     Commands                        Effect
                                     (nothing) repeat the previous command
     n (count)                       execute the next instruction(s), displaying the registers
-    c (count)                       continue execution (if count is omitted, continues indefinitely)
+    c (addr)                        continue execution up to *addr* (if addr is omitted, continues indefinitely)
+    nn (count)                      execute the next instruction(s), not stepping into bl instructions
     b [addr]                        set breakpoint (if addr is "all", prints all break/watch/read points)
-    bw [addr]                       set watchpoint
-    br [addr]                       set readpoint
+    bw [addr]                       set watchpoint (stops execution when *addr* is written to)
+    br [addr]                       set readpoint (stops execution when *addr* is read)
     bc [condition]                  set conditional breakpoint; conditions may be any expression
     d [addr]                        delete breakpoint (if addr is "all", deletes all break/watch/read points)
     dw [addr]                       delete watchpoint
@@ -192,7 +195,8 @@ helptext = """
                                         absolute address references, like "bl $08014878", or "ldr r0, [$08014894]"
                                         if *command* is omitted, it enters multiline mode
     disasm [code]                   disassembles 16-bit machine code into Thumb
-    fbounds [addr]                  detects and displays the boundaries of the function containing *addr*
+    fbounds [addr] (show)           detects and displays the boundaries of the function containing *addr*
+                                        if *show* is anything, will print the function as well
 
     if [condition]: [command]       execute *command* if *condition* is true
     while [condition]: [command]    repeat *command* while *condition* is true
@@ -206,6 +210,7 @@ helptext = """
                                         execute these functions later by typing in "name()"
                                         you can call functions within functions, with unlimited nesting
 
+    search [data] (size)            searches all memory for *data*, which may be a number, or byte-object
     tree [addr] (depth)             prints a tree of functions based on what functions are called in Thumb mode
 
     save (name)                     create a local save; name = PRIORSTATE by default
@@ -293,6 +298,14 @@ def rlist_to_int(string):
     return rlist
 
 
+def tobytes(data, size=None): 
+    if type(data) is int: 
+        if size == None: size = math.ceil(int.bit_length(data)/8)
+        return int.to_bytes(data, size, "little")
+    elif type(data) is str: return data.encode()
+    else: return bytes(data)
+
+
 def cpsr_str(cpsr):
     """Takes a 32-bit register as input, and outputs a string based on the NZCV and T flags"""
 
@@ -337,6 +350,15 @@ def showreg():
     print(f"{s}CPSR: {cpsr_str(REG[16])}  {REG[16]:0>8X}")
 
 
+def search(data, size=None):
+    data = tobytes(data, size)
+    i = 0
+    for mem in (BIOS, RAM, ROM):
+        try: pos = mem.index(data); return pos, i
+        except ValueError: i += 1
+    return -1, i
+
+
 expstr_compile = (
     (
         (re.compile(r"\$"), r"0x"),
@@ -347,24 +369,19 @@ expstr_compile = (
     ),
     {"sp":"REG[13]", "lr":"REG[14]", "pc":"REG[15]"},
     lambda m, reps: repr(UserVars[m]) if m in UserVars else reps[m] if m in reps else m,
-    re.compile(r"(.*?)((?:[brf]?(?:\'.*?\'|\".*?\"))|$)"),  # returns (non-string, string) pairs
 )
 
 def expstr(string):
     """Converts a user string into a string that can be called with eval()"""
-    
-    global expstr_compile
-    if '"' in string or "'" in string:
-        def subs(matchobj):
-            global expstr_compile
-            s = matchobj.group(1)
-            if s:
-                for k,v in expstr_compile[0]: s = k.sub(v,s)
-            return (s or "") + (matchobj.group(2) or "")
-        return expstr_compile[3].sub(subs, string)
-    else:
-        for k,v in expstr_compile[0]: string = k.sub(v,string)
-        return string
+
+    def subs(matchobj):
+        s1, s2 = matchobj.groups()
+        if s1:
+            for k,v in expstr_compile[0]: s1 = k.sub(v,s1)
+            return s1 + (s2 or "")
+        else: return s2 or ""
+
+    return Matchquotes.sub(subs, string)
 
 
 def expeval(arg):
@@ -372,6 +389,16 @@ def expeval(arg):
 
     if type(arg) is not str: return arg
     else: return eval(expstr(arg))
+
+
+def extract_args(command):
+    """Extracts arguments from commands and returns an iterator"""
+    
+    for s1, s2 in Matchquotes.findall(command)[:-1]:
+        for arg in re.findall(r"\S+", s1):
+            for k,v in expstr_compile[0]: arg = k.sub(v,arg)
+            yield arg
+        if s2: yield s2
 
 
 def formatstr(expstring):
@@ -450,9 +477,12 @@ def getConsoleCommands():
     def com_n(count=1): 
         global Show, Pause, PauseCount
         Show, Pause, PauseCount = True, False, expeval(count)
-    def com_c(count=0):
-        global Show,Pause,PauseCount
-        Show,Pause,PauseCount = False, False, expeval(count)
+    def com_c(addr=None):
+        global Show, Pause, StopAddress
+        Show, Pause, StopAddress = False, False, expeval(addr)
+    def com_nn(count=1):
+        global Show, Pause, PauseCount, SkipFuncs
+        Show, Pause, PauseCount, SkipFuncs = True, False, expeval(count), True
     def com_b(addr):
         if addr == "all":
             print("BreakPoints: ", [f"{i:0>8X}" for i in sorted(BreakPoints)])
@@ -477,6 +507,14 @@ def getConsoleCommands():
     def com_m(command): 
         if re.match(r"\(", command): print(expeval("m" + command))
         else: hexdump(*map(expeval, command.split(" ")))
+    def com_search(data, size=None):
+        pos, mem = search(expeval(data), expeval(size))
+        if mem == 0: print(f"{pos:0>8X}")
+        elif mem == 1:
+            for region, size in RegionMarkers.items():
+                if size[0] <= pos < sum(size): print(f"{0x1000000*region + pos-size[0]:0>8X}"); break
+        elif mem == 2: print(f"{0x08000000 + pos:0>8X}")
+        else: print("No match found")
     def com_asm(command):
         args, asm_string = re.match(r"asm\s*([^:]*):\s*(.*)", command).groups()
         target = re.search(r"-(\S+)", args)
@@ -518,6 +556,12 @@ def getConsoleCommands():
         if ROM:
             start, end, count = functionBounds(expeval(addr))
             if show: disT(start, count)
+            print(f"(${start:0>8x}, ${end:0>8x}, count={count})")
+        else: print("Error: No ROM loaded")
+    def com_fboundsa(addr, show=""):
+        if ROM:
+            start, end, count = functionBounds(expeval(addr), mode=0)
+            if show: disA(start, count)
             print(f"(${start:0>8x}, ${end:0>8x}, count={count})")
         else: print("Error: No ROM loaded")
     def com_if(command):
@@ -641,9 +685,11 @@ commands = getConsoleCommands()
 
 Show = True
 Pause = True
-PauseCount = 0
+PauseCount = 0  # the number of instructions until next pause
+StopAddress = None  # address to stop at (like a breakpoint)
+SkipFuncs = False  # whether to step into functions
+BreakState = ""
 CPUCOUNT = 0
-SETINSTR = None
 lastcommand = ">"
 Modelist = {"@", "$", ">"}
 ProgramMode = ">"
@@ -662,6 +708,7 @@ while True:
     try:
         # User Input
         while Pause:
+            SkipFuncs = False
             if Commandque:
                 try: command = next(Commandque[-1])
                 except StopIteration: Commandque.pop(); continue
@@ -678,8 +725,11 @@ while True:
             if command in Modelist: ProgramMode = command; continue
             if ProgramMode == "@":
                 try: 
-                    SETINSTR = assemble(command, REG[15] + 2*MODE)
-                    Show = ShowRegistersInAsmMode; break
+                    user_instruction = assemble(command, REG[15] + 2*MODE)
+                    ARMCPU.execute(user_instruction, 1)
+                    UpdateGlobalInfo()
+                    if ShowRegistersInAsmMode: showreg()
+                    continue
                 except Exception as e: 
                     if type(e) in {KeyError, ValueError, AttributeError}: # probably a normal command
                         pass  # KeyError = name not in thumbfuncs; ValueError = r0 = 1; AttributeError = $..n
@@ -702,36 +752,50 @@ while True:
                 else: print(expeval(command))
             elif Matchassign.search(command): assign(command)
             elif name in comtype3: commands[name](args)
-            elif name in commands:
-                if args: commands[name](*args.split(" "))
-                else: commands[name]()
+            elif name in commands: commands[name](*extract_args(args))
             else: print(expeval(command))
 
-        # Execute next instruction
-        if SETINSTR is not None:
-            MODE, SIZE, PCNT, INSTR = 1, 2, REG[15] + 2*MODE, SETINSTR
-            ARMCPU.execute(SETINSTR, 1)
-            if not (REG[16] & 1<<5) and REG[15] & 2: REG[15] -= 2  # if resultant mode is ARM and pc is misaligned, align it
-            SETINSTR = None
+        if SkipFuncs:
+            if not StopAddress and MODE == 1 and INSTR & 0xf800f000 == 0xf800f000:
+                StopAddress = ADDR + 4
+                Pause = False
+                print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
+        if not BreakState:
+            if ADDR in BreakPoints:
+                BreakState = f"Hit BreakPoint: ${ADDR:0>8X}"
+            for i in Conditionals:
+                if eval(i): BreakState = f"Hit BreakPoint: {i}"
+            if BreakState:
+                print(BreakState)
+                showreg()
+                print(f"Next: {ADDR:0>8X}: {INSTR:0>{2*SIZE}X}  {disasm(INSTR, MODE, PCNT)}")
+                Pause = True
+                continue
         else:
-            ARMCPU.execute(INSTR,MODE)
+            BreakState = ""
+        if StopAddress == ADDR:
+            StopAddress = None
+            if PauseCount:
+                PauseCount -= 1
+                Pause = not PauseCount
+            else:
+                Pause = True
+            showreg()
+            print(f"Next: {ADDR:0>8X}: {INSTR:0>{2*SIZE}X}  {disasm(INSTR, MODE, PCNT)}")
+            continue
+
+        ARMCPU.execute(INSTR,MODE)
         CPUCOUNT += 1
 
         # Handlers
-        BreakState = ARMCPU.BreakState
-        if ADDR in BreakPoints: 
-            BreakState = f"BreakPoint: ${ADDR:0>8X}"
-        for i in Conditionals:
-            if eval(i): BreakState = f"BreakPoint: {i}"
-        if PauseCount: PauseCount -= 1; Pause = not PauseCount
-        if BreakState:
-            Show,Pause = True,True
-            print("Hit " + BreakState)
-            BreakState = ""
-        if Show:
-            print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
-            showreg()
-
+        if ARMCPU.BreakState:
+            Show, Pause = True, True
+            print("Hit " + ARMCPU.BreakState)
+        if not StopAddress:
+            if PauseCount: PauseCount -= 1; Pause = not PauseCount
+            if Show:
+                print(f"{ADDR:0>8X}: {INSTR:0>{2*SIZE}X}".ljust(19), disasm(INSTR, MODE, PCNT))
+                showreg()
         if expeval(OutputCondition):
             OutputHandle.write(OutputFormat[0].format(ADDR=ADDR, INSTR=INSTR, REG=REG, MODE=MODE, CPUCOUNT=CPUCOUNT, 
                 _G=[eval(x) for x in OutputFormat[1:]]))
@@ -742,7 +806,6 @@ while True:
                 s = input("Proceed? y/n: ")
                 if s.lower() in {"y","yes"}: FileLimit *= 4
                 else: Pause = True
-
         UpdateGlobalInfo()
     
     except SystemExit: sys.exit()
